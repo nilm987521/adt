@@ -1,4 +1,4 @@
-module github.com/adt-tool/adt
+module github.com/nilm987521/adt
 
 go 1.25.5
 

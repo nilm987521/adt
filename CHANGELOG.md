@@ -27,4 +27,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-compilation Makefile for darwin/linux/windows (amd64 + arm64)
 - Oracle 11g compatibility: ROWNUM-based pagination instead of FETCH FIRST N ROWS
 
-[Unreleased]: https://github.com/adt-tool/adt/commits/main
+[Unreleased]: https://github.com/nilm987521/adt/commits/main

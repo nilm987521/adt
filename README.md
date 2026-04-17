@@ -1,5 +1,5 @@
 # adt — Agentic DB Tool
-
+\[[中文](README.zh-TW.md)]
 A cross-platform CLI for safely querying Oracle databases from AI agents (Claude Code, etc.).
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -29,15 +29,15 @@ Without a guard like `adt`, an AI agent with DB access could — through halluci
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/adt-tool/adt/releases/latest/download/adt-darwin-arm64 -o /usr/local/bin/adt
+curl -L https://github.com/nilm987521/adt/releases/latest/download/adt-darwin-arm64 -o /usr/local/bin/adt
 chmod +x /usr/local/bin/adt
 
 # macOS (Intel)
-curl -L https://github.com/adt-tool/adt/releases/latest/download/adt-darwin-amd64 -o /usr/local/bin/adt
+curl -L https://github.com/nilm987521/adt/releases/latest/download/adt-darwin-amd64 -o /usr/local/bin/adt
 chmod +x /usr/local/bin/adt
 
 # Build from source
-git clone https://github.com/adt-tool/adt
+git clone https://github.com/nilm987521/adt
 cd adt && make build
 ```
 

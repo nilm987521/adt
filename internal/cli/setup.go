@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/adt-tool/adt/internal/config"
-	"github.com/adt-tool/adt/internal/keyring"
+	"github.com/nilm987521/adt/internal/config"
+	"github.com/nilm987521/adt/internal/keyring"
 	"github.com/spf13/cobra"
 )
 

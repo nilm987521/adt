@@ -122,7 +122,7 @@ Public issues are visible to everyone immediately, before a fix is available. Fo
 
 Open a **GitHub Security Advisory** (private, visible only to maintainers):
 
-> https://github.com/adt-tool/adt/security/advisories/new
+> https://github.com/nilm987521/adt/security/advisories/new
 
 ### Alternative
 

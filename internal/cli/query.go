@@ -6,12 +6,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/adt-tool/adt/internal/audit"
-	"github.com/adt-tool/adt/internal/config"
-	"github.com/adt-tool/adt/internal/keyring"
-	"github.com/adt-tool/adt/internal/oracle"
-	"github.com/adt-tool/adt/internal/output"
-	"github.com/adt-tool/adt/internal/security"
+	"github.com/nilm987521/adt/internal/audit"
+	"github.com/nilm987521/adt/internal/config"
+	"github.com/nilm987521/adt/internal/keyring"
+	"github.com/nilm987521/adt/internal/oracle"
+	"github.com/nilm987521/adt/internal/output"
+	"github.com/nilm987521/adt/internal/security"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -18,7 +18,7 @@ Thank you for your interest in contributing to **adt** (Agentic DB Tool). This d
 ## Development Setup
 
 ```bash
-git clone https://github.com/adt-tool/adt.git
+git clone https://github.com/nilm987521/adt.git
 cd adt
 go mod download    # fetch dependencies
 make build         # verify the project compiles

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/adt-tool/adt/internal/cli"
+import "github.com/nilm987521/adt/internal/cli"
 
 // version and buildTime are injected at build time via -ldflags:
 //

@@ -1,4 +1,4 @@
-MODULE     = github.com/adt-tool/adt
+MODULE     = github.com/nilm987521/adt
 BINARY     = adt
 LDFLAGS    = -ldflags "-s -w" -trimpath
 VERSION    = $(shell git describe --tags --always 2>/dev/null || echo "dev")

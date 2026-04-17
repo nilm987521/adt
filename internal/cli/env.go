@@ -6,7 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/adt-tool/adt/internal/config"
+	"github.com/nilm987521/adt/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
