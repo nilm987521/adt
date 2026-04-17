@@ -538,38 +538,38 @@ go build -ldflags "
 
 ### 階段 1：核心骨架（MVP，v0.1.0）
 
-- [ ] Cobra + viper 基礎架構，`/cmd` + `/internal` 布局
-- [ ] `setup` subcommand（keyring 寫入）
-- [ ] `env list` / `env current`
-- [ ] `query` subcommand 完整實作
-    - [ ] SQL 關鍵字驗證
-    - [ ] Row limit 自動注入
-    - [ ] READ ONLY transaction
-    - [ ] Timeout
-    - [ ] JSON 輸出
-- [ ] 稽核 log
-- [ ] Config schema version 支援
-- [ ] 三平台編譯 Makefile
+- [x] Cobra + viper 基礎架構，`/cmd` + `/internal` 布局
+- [x] `setup` subcommand（keyring 寫入）
+- [x] `env list` / `env current`
+- [x] `query` subcommand 完整實作
+    - [x] SQL 關鍵字驗證
+    - [x] Row limit 自動注入
+    - [x] READ ONLY transaction
+    - [x] Timeout
+    - [x] JSON 輸出
+- [x] 稽核 log
+- [x] Config schema version 支援
+- [x] 三平台編譯 Makefile
 
 ### 階段 2：輔助 subcommand（v0.2.0）
 
-- [ ] `list-tables`
-- [ ] `describe`
-- [ ] `explain`
-- [ ] `sample`
-- [ ] Table / CSV 輸出格式
-- [ ] `--dry-run`
+- [x] `list-tables`
+- [x] `describe`
+- [x] `explain`
+- [x] `sample`
+- [x] Table / CSV 輸出格式
+- [x] `--dry-run`
 
 ### 階段 3：公開發佈準備（v0.3.0 ~ v1.0.0）
 
-- [ ] README（含 Quick Start、asciinema demo）
-- [ ] SECURITY.md（威脅模型、漏洞回報）
-- [ ] CONTRIBUTING.md
-- [ ] LICENSE（MIT）
-- [ ] GitHub Actions CI
-- [ ] goreleaser 配置
-- [ ] CHANGELOG.md
-- [ ] 單元測試與整合測試
+- [x] README（含 Quick Start、asciinema demo）
+- [x] SECURITY.md（威脅模型、漏洞回報）
+- [x] CONTRIBUTING.md
+- [x] LICENSE（MIT）
+- [x] GitHub Actions CI
+- [x] goreleaser 配置
+- [x] CHANGELOG.md
+- [x] 單元測試與整合測試
 - [ ] 公開於 GitHub
 
 ### 階段 4：推廣與強化（v1.x 之後）
@@ -590,35 +590,35 @@ go build -ldflags "
 
 **法律與授權**
 
-- [ ] LICENSE 檔存在且為 MIT
-- [ ] 所有依賴套件授權相容（Apache/MIT/BSD）
-- [ ] README 明確標示授權
+- [x] LICENSE 檔存在且為 MIT
+- [x] 所有依賴套件授權相容（Apache/MIT/BSD）
+- [x] README 明確標示授權
 
 **文件**
 
-- [ ] README 有 Quick Start、安裝、使用範例
-- [ ] SECURITY.md 說明威脅模型與漏洞回報流程
-- [ ] CHANGELOG.md 依 Keep a Changelog 格式
-- [ ] 所有 error code 有文件
-- [ ] Config schema 有文件
+- [x] README 有 Quick Start、安裝、使用範例
+- [x] SECURITY.md 說明威脅模型與漏洞回報流程
+- [x] CHANGELOG.md 依 Keep a Changelog 格式
+- [x] 所有 error code 有文件
+- [x] Config schema 有文件
 
 **程式碼品質**
 
-- [ ] 無 hardcode 的客戶 / 個人資訊
-- [ ] 無暴露個人路徑的 panic message
-- [ ] `go vet` / `golangci-lint` 無警告
-- [ ] 核心邏輯（SQL 驗證、READ ONLY tx）有單元測試
+- [x] 無 hardcode 的客戶 / 個人資訊
+- [x] 無暴露個人路徑的 panic message
+- [x] `go vet` / `golangci-lint` 無警告
+- [x] 核心邏輯（SQL 驗證、READ ONLY tx）有單元測試
 
 **發版機制**
 
-- [ ] goreleaser 設定完成，可自動產生三平台 binary
-- [ ] GitHub Actions 綠燈
-- [ ] Git tag semver 格式正確
+- [x] goreleaser 設定完成，可自動產生三平台 binary
+- [x] GitHub Actions 綠燈
+- [x] Git tag semver 格式正確
 
 **安全**
 
-- [ ] 無 commit 過的憑證或 secret
-- [ ] 無 telemetry 或對外連線（除 DB 本身）
+- [x] 無 commit 過的憑證或 secret
+- [x] 無 telemetry 或對外連線（除 DB 本身）
 
 ---
 
