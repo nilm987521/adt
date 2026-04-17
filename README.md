@@ -1,5 +1,6 @@
 # adt — Agentic DB Tool
 \[[中文](README.zh-TW.md)]
+
 A cross-platform CLI for safely querying Oracle databases from AI agents (Claude Code, etc.).
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
