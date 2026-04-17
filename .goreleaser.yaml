@@ -1,0 +1,81 @@
+version: 2
+
+project_name: adt
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: adt
+    main: ./cmd/adt
+    binary: adt
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.buildTime={{.Date}}
+    flags:
+      - -trimpath
+
+archives:
+  - id: adt
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: '^feat'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^fix'
+      order: 1
+    - title: 'Other Changes'
+      order: 999
+
+release:
+  github:
+    owner: adt-tool
+    name: adt
+  draft: false
+  prerelease: auto
+  name_template: "v{{.Version}}"
+
+announce:
+  skip: true

@@ -1,1 +1,8 @@
 .todos/
+dist/
+*.exe
+coverage.out
+*.log
+.env
+*.pem
+*.key
