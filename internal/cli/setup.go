@@ -24,7 +24,23 @@ func init() {
 	_ = setupCmd.MarkFlagRequired("env")
 }
 
-func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo // CLI command; complexity is inherent in sequential validation steps
+const driverOracle = "oracle"
+
+// defaultPortForDriver returns the conventional default port for the given driver name.
+func defaultPortForDriver(driver string) string {
+	switch driver {
+	case "postgres":
+		return "5432"
+	case "mysql":
+		return "3306"
+	case "mssql":
+		return "1433"
+	default: // "oracle" and empty
+		return "1521"
+	}
+}
+
+func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo,funlen // CLI command; complexity and length are inherent in sequential interactive prompts
 	envName, _ := cmd.Flags().GetString("env")
 
 	// 1. Load config (or create empty if not exists)
@@ -34,7 +50,7 @@ func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo // CLI co
 	if err != nil {
 		// Create a minimal empty config if loading fails
 		cfg = &config.Config{
-			ConfigVersion: 1,
+			ConfigVersion: config.CurrentVersion,
 			Environments:  make(map[string]config.Environment),
 		}
 	}
@@ -70,21 +86,45 @@ func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo // CLI co
 
 	fmt.Printf("Configuring environment: %s\n", envName)
 
-	// 3. Prompt for connection details
+	// 3. Prompt for driver
+	defaultDriver := driverOracle
+	if hasExisting && existing.EffectiveDriver() != "" {
+		defaultDriver = existing.EffectiveDriver()
+	}
+
+	driver, err := prompt("Driver (oracle/postgres/mysql/mssql)", defaultDriver)
+	if err != nil {
+		return err
+	}
+
+	driver = strings.ToLower(strings.TrimSpace(driver))
+
+	switch driver {
+	case driverOracle, "postgres", "mysql", "mssql":
+		// valid
+	default:
+		return fmt.Errorf("unsupported driver %q: must be one of oracle, postgres, mysql, mssql", driver)
+	}
+
+	// 4. Prompt for connection details
 	defaultUser := ""
 	defaultHost := ""
-	defaultPort := "1521"
-	defaultService := ""
+	defaultPort := defaultPortForDriver(driver)
+	defaultServiceOrDB := ""
 
 	if hasExisting {
 		defaultUser = existing.User
-
 		defaultHost = existing.Host
+
 		if existing.Port != 0 {
 			defaultPort = strconv.Itoa(existing.Port)
 		}
 
-		defaultService = existing.Service
+		if driver == driverOracle {
+			defaultServiceOrDB = existing.Service
+		} else {
+			defaultServiceOrDB = existing.Database
+		}
 	}
 
 	user, err := prompt("User", defaultUser)
@@ -107,12 +147,21 @@ func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo // CLI co
 		return fmt.Errorf("invalid port number %q: %w", portStr, err)
 	}
 
-	service, err := prompt("Service name", defaultService)
-	if err != nil {
-		return err
+	var service, database string
+
+	if driver == driverOracle {
+		service, err = prompt("Service name", defaultServiceOrDB)
+		if err != nil {
+			return err
+		}
+	} else {
+		database, err = prompt("Database name", defaultServiceOrDB)
+		if err != nil {
+			return err
+		}
 	}
 
-	// 4. Prompt for password (hidden input via bufio.Scanner — golang.org/x/term not in go.mod)
+	// 5. Prompt for password (hidden input via bufio.Scanner — golang.org/x/term not in go.mod)
 	fmt.Print("Password (input will be visible): ")
 
 	passwordLine, err := reader.ReadString('\n')
@@ -122,13 +171,16 @@ func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo // CLI co
 
 	password := strings.TrimRight(passwordLine, "\r\n")
 
-	// 5. Write connection info to config
+	// 6. Write connection info to config
 	env := config.Environment{
-		User:    user,
-		Host:    host,
-		Port:    port,
-		Service: service,
+		Driver:   driver,
+		User:     user,
+		Host:     host,
+		Port:     port,
+		Service:  service,
+		Database: database,
 	}
+
 	if hasExisting {
 		// Preserve existing settings not being overwritten
 		env.Production = existing.Production
@@ -138,20 +190,21 @@ func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo // CLI co
 	}
 
 	cfg.Environments[envName] = env
+	cfg.ConfigVersion = config.CurrentVersion
 
 	if err := cfg.Save(cfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "error: failed to save config: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 6. Write password to keyring
+	// 7. Write password to keyring
 	if err := keyring.Set(envName, password); err != nil {
 		fmt.Fprintf(os.Stderr, "error: failed to save password to keyring: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 7. Print success message
-	fmt.Printf("Environment %q configured successfully.\n", envName)
+	// 8. Print success message
+	fmt.Printf("Environment %q configured successfully (driver: %s).\n", envName, driver)
 
 	return nil
 }
