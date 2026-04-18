@@ -36,13 +36,14 @@ func init() {
 
 // envEntry is the JSON representation of a single environment in env list output.
 type envEntry struct {
-	Name       string `json:"name"`
-	User       string `json:"user"`
-	Host       string `json:"host"`
-	Port       int    `json:"port"`
-	Service    string `json:"service"`
-	Production bool   `json:"production"`
-	Default    bool   `json:"default"`
+	Name        string   `json:"name"`
+	User        string   `json:"user"`
+	Host        string   `json:"host"`
+	Port        int      `json:"port"`
+	Service     string   `json:"service"`
+	Production  bool     `json:"production"`
+	Default     bool     `json:"default"`
+	MaskColumns []string `json:"mask_columns"`
 }
 
 // envListOutput is the top-level JSON structure for env list.
@@ -59,15 +60,26 @@ func runEnvList(_ *cobra.Command, _ []string) error {
 	}
 
 	entries := make([]envEntry, 0, len(cfg.Environments))
-	for name, env := range cfg.Environments {
+	for name := range cfg.Environments {
+		env, err := cfg.GetEnv(name)
+		if err != nil {
+			continue
+		}
+
+		maskCols := env.MaskColumns
+		if maskCols == nil {
+			maskCols = []string{}
+		}
+
 		entries = append(entries, envEntry{
-			Name:       name,
-			User:       env.User,
-			Host:       env.Host,
-			Port:       env.Port,
-			Service:    env.Service,
-			Production: env.Production,
-			Default:    name == cfg.DefaultEnv,
+			Name:        name,
+			User:        env.User,
+			Host:        env.Host,
+			Port:        env.Port,
+			Service:     env.Service,
+			Production:  env.Production,
+			Default:     name == cfg.DefaultEnv,
+			MaskColumns: maskCols,
 		})
 	}
 

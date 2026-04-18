@@ -110,7 +110,7 @@ Override with `--config <path>`.
 ### Example config.yaml
 
 ```yaml
-config_version: 2               # Schema version — v2 adds multi-DB driver support
+config_version: 3               # Schema version — v3 adds data masking support
 
 default_env: oracle-dev
 
@@ -163,13 +163,63 @@ environments:
     require_confirmation: true  # Require --confirm flag before any query
     max_rows: 500               # Override default row limit
     timeout: 15s                # Override default timeout
+    mask_columns:               # Additional columns to mask in this environment
+      - phone
 
 defaults:
   max_rows: 1000
   timeout: 30s
+  mask_columns:                 # Columns to mask across all environments
+    - id_number
+    - email
 
 audit:
   log_path: ~/.local/share/adt/audit.log
+```
+
+### Data Masking
+
+`adt` can automatically redact sensitive column values in all output formats (JSON, table, CSV).
+
+**How it works:**
+
+- Add `mask_columns` under `defaults` to mask those columns in every environment.
+- Add `mask_columns` under a specific environment to mask additional columns in that environment only.
+- The effective mask set for each environment is the **union** of the global `defaults.mask_columns` and the environment-level `mask_columns`.
+- Column name matching is **case-insensitive** (`email`, `EMAIL`, and `Email` are treated the same).
+- Masked values are replaced with `[REDACTED]` in all output formats.
+
+**Example:**
+
+```yaml
+defaults:
+  mask_columns:
+    - email       # masked in all environments
+
+environments:
+  prod:
+    mask_columns:
+      - phone     # masked only in prod (plus email from defaults)
+```
+
+Running `adt query --env prod "SELECT email, phone, name FROM users"` produces:
+
+```json
+{
+  "rows": [
+    { "email": "[REDACTED]", "phone": "[REDACTED]", "name": "Alice" }
+  ]
+}
+```
+
+The `--dry-run` flag reports which columns will be masked without executing the query:
+
+```json
+{
+  "dry_run": true,
+  "mask_columns": ["EMAIL", "PHONE"],
+  "message": "SQL validated successfully, dry-run mode — not executed"
+}
 ```
 
 ### Permissions

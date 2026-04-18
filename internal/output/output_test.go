@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const redacted = "[REDACTED]"
+
 // captureStdout redirects os.Stdout during f() and returns the captured output.
 func captureStdout(t *testing.T, f func()) string {
 	t.Helper()
@@ -288,9 +290,7 @@ func TestQueryResultToTable_MultipleRows(t *testing.T) {
 
 // --- PrintCSV ---
 
-func TestPrintCSV_ProperQuoting(t *testing.T) {
-	t.Parallel()
-
+func TestPrintCSV_ProperQuoting(t *testing.T) { //nolint:paralleltest // captureStdout mutates os.Stdout (global); parallel would cause data race
 	output := captureStdout(t, func() {
 		headers := []string{"name", "value"}
 
@@ -311,9 +311,7 @@ func TestPrintCSV_ProperQuoting(t *testing.T) {
 	}
 }
 
-func TestPrintCSV_HeadersWritten(t *testing.T) {
-	t.Parallel()
-
+func TestPrintCSV_HeadersWritten(t *testing.T) { //nolint:paralleltest // captureStdout mutates os.Stdout (global); parallel would cause data race
 	output := captureStdout(t, func() {
 		_ = PrintCSV([]string{"col_a", "col_b"}, [][]string{{"v1", "v2"}})
 	})
@@ -322,9 +320,7 @@ func TestPrintCSV_HeadersWritten(t *testing.T) {
 	}
 }
 
-func TestPrintCSV_EmptyRows(t *testing.T) {
-	t.Parallel()
-
+func TestPrintCSV_EmptyRows(t *testing.T) { //nolint:paralleltest // captureStdout mutates os.Stdout (global); parallel would cause data race
 	output := captureStdout(t, func() {
 		_ = PrintCSV([]string{"h1", "h2"}, [][]string{})
 	})
@@ -335,9 +331,7 @@ func TestPrintCSV_EmptyRows(t *testing.T) {
 
 // --- PrintTable ---
 
-func TestPrintTable_ContainsHeaders(t *testing.T) {
-	t.Parallel()
-
+func TestPrintTable_ContainsHeaders(t *testing.T) { //nolint:paralleltest // captureStdout mutates os.Stdout (global); parallel would cause data race
 	output := captureStdout(t, func() {
 		_ = PrintTable([]string{"NAME", "VALUE"}, [][]string{{"Alice", "42"}})
 	})
@@ -350,13 +344,152 @@ func TestPrintTable_ContainsHeaders(t *testing.T) {
 	}
 }
 
-func TestPrintTable_ContainsSeparator(t *testing.T) {
-	t.Parallel()
-
+func TestPrintTable_ContainsSeparator(t *testing.T) { //nolint:paralleltest // captureStdout mutates os.Stdout (global); parallel would cause data race
 	output := captureStdout(t, func() {
 		_ = PrintTable([]string{"NAME"}, [][]string{{"Alice"}})
 	})
 	if !strings.Contains(output, "----") {
 		t.Errorf("table output missing separator dashes: %s", output)
+	}
+}
+
+// --- MaskRows ---
+
+func TestMaskRows_CaseInsensitiveMaskColsUppercase(t *testing.T) {
+	t.Parallel()
+
+	rows := []map[string]any{{"email": "alice@example.com", "name": "Alice"}}
+	result := MaskRows(rows, []string{"EMAIL"})
+
+	if result[0]["email"] != redacted {
+		t.Errorf("email should be [REDACTED], got %v", result[0]["email"])
+	}
+
+	if result[0]["name"] != "Alice" {
+		t.Errorf("name should be unchanged, got %v", result[0]["name"])
+	}
+}
+
+func TestMaskRows_CaseInsensitiveMaskColsLowercase(t *testing.T) {
+	t.Parallel()
+
+	rows := []map[string]any{{"EMAIL": "alice@example.com", "name": "Alice"}}
+	result := MaskRows(rows, []string{"EMAIL"})
+
+	if result[0]["EMAIL"] != redacted {
+		t.Errorf("EMAIL should be [REDACTED], got %v", result[0]["EMAIL"])
+	}
+}
+
+func TestMaskRows_EmptyMaskCols(t *testing.T) {
+	t.Parallel()
+
+	rows := []map[string]any{{"email": "alice@example.com", "age": 30}}
+	result := MaskRows(rows, []string{})
+
+	if result[0]["email"] != "alice@example.com" {
+		t.Errorf("email should be unchanged with empty maskCols, got %v", result[0]["email"])
+	}
+
+	if result[0]["age"] != 30 {
+		t.Errorf("age should be unchanged, got %v", result[0]["age"])
+	}
+}
+
+func TestMaskRows_NilMaskCols(t *testing.T) {
+	t.Parallel()
+
+	rows := []map[string]any{{"email": "alice@example.com"}}
+	result := MaskRows(rows, nil)
+
+	if result[0]["email"] != "alice@example.com" {
+		t.Errorf("email should be unchanged with nil maskCols, got %v", result[0]["email"])
+	}
+}
+
+func TestMaskRows_MultipleColumns(t *testing.T) {
+	t.Parallel()
+
+	rows := []map[string]any{{"email": "alice@example.com", "phone": "555-1234", "name": "Alice"}}
+	result := MaskRows(rows, []string{"EMAIL", "PHONE"})
+
+	if result[0]["email"] != redacted {
+		t.Errorf("email should be [REDACTED], got %v", result[0]["email"])
+	}
+
+	if result[0]["phone"] != redacted {
+		t.Errorf("phone should be [REDACTED], got %v", result[0]["phone"])
+	}
+
+	if result[0]["name"] != "Alice" {
+		t.Errorf("name should be unchanged, got %v", result[0]["name"])
+	}
+}
+
+func TestMaskRows_NilValueMasked(t *testing.T) {
+	t.Parallel()
+
+	rows := []map[string]any{{"email": nil, "name": "Alice"}}
+	result := MaskRows(rows, []string{"EMAIL"})
+
+	if result[0]["email"] != redacted {
+		t.Errorf("nil email should become [REDACTED], got %v", result[0]["email"])
+	}
+}
+
+func TestMaskRows_DoesNotMutateInput(t *testing.T) {
+	t.Parallel()
+
+	original := map[string]any{"email": "alice@example.com", "name": "Alice"}
+	rows := []map[string]any{original}
+	_ = MaskRows(rows, []string{"EMAIL"})
+
+	// original map must not be mutated
+	if original["email"] != "alice@example.com" {
+		t.Errorf("original map was mutated: email = %v", original["email"])
+	}
+}
+
+func TestMaskRows_DoesNotMutateInputSlice(t *testing.T) {
+	t.Parallel()
+
+	row := map[string]any{"email": "alice@example.com"}
+	rows := []map[string]any{row}
+	result := MaskRows(rows, []string{"EMAIL"})
+
+	// result slice is distinct from input
+	if &rows[0] == &result[0] {
+		t.Error("result slice shares pointer with input slice")
+	}
+}
+
+func TestMaskRows_EmptyInput(t *testing.T) {
+	t.Parallel()
+
+	result := MaskRows([]map[string]any{}, []string{"EMAIL"})
+	if len(result) != 0 {
+		t.Errorf("expected empty result for empty input, got %d rows", len(result))
+	}
+}
+
+func TestMaskRows_MultipleRows(t *testing.T) {
+	t.Parallel()
+
+	rows := []map[string]any{
+		{"email": "alice@example.com", "id": 1},
+		{"email": "bob@example.com", "id": 2},
+	}
+	result := MaskRows(rows, []string{"EMAIL"})
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(result))
+	}
+
+	if result[0]["email"] != redacted || result[1]["email"] != redacted {
+		t.Errorf("email in both rows should be [REDACTED], got %v, %v", result[0]["email"], result[1]["email"])
+	}
+
+	if result[0]["id"] != 1 || result[1]["id"] != 2 {
+		t.Errorf("id values should be unchanged")
 	}
 }

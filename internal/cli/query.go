@@ -93,13 +93,19 @@ func runQuery(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI 
 
 	// 5. Dry-run: SQL has been validated — exit before touching credentials or DB
 	if viper.GetBool("dry-run") {
+		maskCols := env.MaskColumns
+		if maskCols == nil {
+			maskCols = []string{}
+		}
+
 		_ = output.PrintJSON(map[string]any{
-			"dry_run":    true,
-			"env":        envName,
-			"production": env.Production,
-			"sql_valid":  true,
-			"sql":        originalSQL,
-			"message":    "SQL validated successfully, dry-run mode — not executed",
+			"dry_run":      true,
+			"env":          envName,
+			"production":   env.Production,
+			"sql_valid":    true,
+			"sql":          originalSQL,
+			"mask_columns": maskCols,
+			"message":      "SQL validated successfully, dry-run mode — not executed",
 		})
 
 		os.Exit(0)
@@ -199,8 +205,9 @@ func runQuery(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI 
 		os.Exit(3) //nolint:gocritic // exitAfterDefer: intentional; cancel() not needed after fatal DB error
 	}
 
-	// 11. Serialize rows to JSON-safe types and output result
+	// 11. Serialize rows to JSON-safe types, apply masking, and output result
 	serializedRows := output.SerializeRows(result.Rows)
+	serializedRows = output.MaskRows(serializedRows, env.MaskColumns)
 	out := output.QueryOutput{
 		Env:         envName,
 		Production:  env.Production,

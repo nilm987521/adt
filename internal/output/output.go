@@ -200,6 +200,41 @@ func SerializeRows(rows []map[string]any) []map[string]any {
 	return result
 }
 
+// MaskRows returns a new slice of rows where any column whose name (uppercased)
+// appears in maskCols has its value replaced with "[REDACTED]".
+// maskCols are expected to be already uppercased (e.g. from EffectiveMaskColumns).
+// The input slice and maps are never mutated.
+func MaskRows(rows []map[string]any, maskCols []string) []map[string]any {
+	if len(maskCols) == 0 {
+		// No masking requested; return a shallow copy of the slice to avoid aliasing.
+		result := make([]map[string]any, len(rows))
+		copy(result, rows)
+
+		return result
+	}
+
+	masked := make(map[string]bool, len(maskCols))
+	for _, col := range maskCols {
+		masked[col] = true
+	}
+
+	result := make([]map[string]any, len(rows))
+	for i, row := range rows {
+		newRow := make(map[string]any, len(row))
+		for k, v := range row {
+			if masked[strings.ToUpper(k)] {
+				newRow[k] = "[REDACTED]"
+			} else {
+				newRow[k] = v
+			}
+		}
+
+		result[i] = newRow
+	}
+
+	return result
+}
+
 // ExtractOracleCode extracts "ORA-NNNNN" from an error message.
 func ExtractOracleCode(errMsg string) string {
 	re := regexp.MustCompile(`ORA-\d+`)
