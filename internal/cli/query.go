@@ -105,15 +105,18 @@ func runQuery(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI 
 		os.Exit(0)
 	}
 
-	// 6. Retrieve password from system keyring
-	password, err := keyring.Get(envName)
-	if err != nil {
-		_ = output.PrintJSON(output.ErrorOutput{
-			Error:   "credential_not_found",
-			Message: err.Error(),
-		})
+	// 6. Retrieve password from system keyring (sqlite uses empty password)
+	var password string
+	if env.EffectiveDriver() != "sqlite" {
+		password, err = keyring.Get(envName)
+		if err != nil {
+			_ = output.PrintJSON(output.ErrorOutput{
+				Error:   "credential_not_found",
+				Message: err.Error(),
+			})
 
-		os.Exit(1)
+			os.Exit(1)
+		}
 	}
 
 	// 7. Resolve maxRows: config defaults → env override → --limit flag

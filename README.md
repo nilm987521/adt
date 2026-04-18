@@ -147,6 +147,11 @@ environments:
     port: 1433
     database: myapp
 
+  # SQLite environment (local file — no host/port/password needed)
+  local-sqlite:
+    driver: sqlite
+    database: /path/to/local.db
+
   # Production example
   oracle-prod:
     driver: oracle
@@ -212,7 +217,7 @@ Violations exit with code 2 and a JSON error identifying the exact rule broken.
 | Driver | Wrapping syntax |
 |--------|----------------|
 | Oracle | `SELECT * FROM (<sql>) WHERE ROWNUM <= n` |
-| PostgreSQL / MySQL | `SELECT * FROM (<sql>) AS _adt_sub LIMIT n` |
+| PostgreSQL / MySQL / SQLite | `SELECT * FROM (<sql>) AS _adt_sub LIMIT n` |
 | SQL Server | `SELECT TOP n * FROM (<sql>) AS _adt_sub` |
 
 This prevents runaway queries from returning millions of rows. It also works correctly with `ORDER BY` (sort happens before truncation).
@@ -227,6 +232,7 @@ Every query executes inside a read-only transaction where supported:
 | PostgreSQL | `BEGIN READ ONLY` (native) |
 | MySQL | `SET TRANSACTION READ ONLY` fallback |
 | SQL Server | `READ COMMITTED` isolation (no native read-only tx); write protection relies on Layers 1–2 + DB-level permissions |
+| SQLite | `PRAGMA query_only = ON` (connection-level; rejects all DML/DDL) |
 
 ### Password Storage
 
@@ -365,8 +371,9 @@ Error codes are treated as a public API. Breaking changes require a major versio
 | PostgreSQL 12+ | `github.com/jackc/pgx/v5` | Native `BEGIN READ ONLY` support. |
 | MySQL 5.7+ / 8.x | `github.com/go-sql-driver/mysql` | `SET TRANSACTION READ ONLY` fallback. |
 | SQL Server 2017+ | `github.com/microsoft/go-mssqldb` | No native read-only tx; relies on Layers 1–2 and DB permissions. |
+| SQLite 3.8+ | `modernc.org/sqlite` | Pure Go (no CGO); no external libraries required. Read-only via `PRAGMA query_only = ON`. Adds ~8 MB to binary size. |
 
-Configure the driver per environment with `driver: oracle|postgres|mysql|mssql`.
+Configure the driver per environment with `driver: oracle|postgres|mysql|mssql|sqlite`.
 
 ---
 

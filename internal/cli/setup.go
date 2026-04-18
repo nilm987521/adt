@@ -92,7 +92,7 @@ func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo,funlen //
 		defaultDriver = existing.EffectiveDriver()
 	}
 
-	driver, err := prompt("Driver (oracle/postgres/mysql/mssql)", defaultDriver)
+	driver, err := prompt("Driver (oracle/postgres/mysql/mssql/sqlite)", defaultDriver)
 	if err != nil {
 		return err
 	}
@@ -100,76 +100,90 @@ func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo,funlen //
 	driver = strings.ToLower(strings.TrimSpace(driver))
 
 	switch driver {
-	case driverOracle, "postgres", "mysql", "mssql":
+	case driverOracle, "postgres", "mysql", "mssql", "sqlite":
 		// valid
 	default:
-		return fmt.Errorf("unsupported driver %q: must be one of oracle, postgres, mysql, mssql", driver)
+		return fmt.Errorf("unsupported driver %q: must be one of oracle, postgres, mysql, mssql, sqlite", driver)
 	}
 
 	// 4. Prompt for connection details
-	defaultUser := ""
-	defaultHost := ""
-	defaultPort := defaultPortForDriver(driver)
-	defaultServiceOrDB := ""
+	var user, host, portStr, service, database, password string
+	var port int
 
-	if hasExisting {
-		defaultUser = existing.User
-		defaultHost = existing.Host
-
-		if existing.Port != 0 {
-			defaultPort = strconv.Itoa(existing.Port)
-		}
-
-		if driver == driverOracle {
-			defaultServiceOrDB = existing.Service
-		} else {
+	if driver == "sqlite" {
+		// SQLite only needs a file path — skip user, host, port, password
+		defaultServiceOrDB := ""
+		if hasExisting {
 			defaultServiceOrDB = existing.Database
 		}
-	}
 
-	user, err := prompt("User", defaultUser)
-	if err != nil {
-		return err
-	}
-
-	host, err := prompt("Host", defaultHost)
-	if err != nil {
-		return err
-	}
-
-	portStr, err := prompt("Port", defaultPort)
-	if err != nil {
-		return err
-	}
-
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return fmt.Errorf("invalid port number %q: %w", portStr, err)
-	}
-
-	var service, database string
-
-	if driver == driverOracle {
-		service, err = prompt("Service name", defaultServiceOrDB)
+		database, err = prompt("Database file path", defaultServiceOrDB)
 		if err != nil {
 			return err
 		}
 	} else {
-		database, err = prompt("Database name", defaultServiceOrDB)
+		defaultUser := ""
+		defaultHost := ""
+		defaultPort := defaultPortForDriver(driver)
+		defaultServiceOrDB := ""
+
+		if hasExisting {
+			defaultUser = existing.User
+			defaultHost = existing.Host
+
+			if existing.Port != 0 {
+				defaultPort = strconv.Itoa(existing.Port)
+			}
+
+			if driver == driverOracle {
+				defaultServiceOrDB = existing.Service
+			} else {
+				defaultServiceOrDB = existing.Database
+			}
+		}
+
+		user, err = prompt("User", defaultUser)
 		if err != nil {
 			return err
 		}
+
+		host, err = prompt("Host", defaultHost)
+		if err != nil {
+			return err
+		}
+
+		portStr, err = prompt("Port", defaultPort)
+		if err != nil {
+			return err
+		}
+
+		port, err = strconv.Atoi(portStr)
+		if err != nil {
+			return fmt.Errorf("invalid port number %q: %w", portStr, err)
+		}
+
+		if driver == driverOracle {
+			service, err = prompt("Service name", defaultServiceOrDB)
+			if err != nil {
+				return err
+			}
+		} else {
+			database, err = prompt("Database name", defaultServiceOrDB)
+			if err != nil {
+				return err
+			}
+		}
+
+		// 5. Prompt for password (hidden input via bufio.Scanner — golang.org/x/term not in go.mod)
+		fmt.Print("Password (input will be visible): ")
+
+		passwordLine, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read password: %w", err)
+		}
+
+		password = strings.TrimRight(passwordLine, "\r\n")
 	}
-
-	// 5. Prompt for password (hidden input via bufio.Scanner — golang.org/x/term not in go.mod)
-	fmt.Print("Password (input will be visible): ")
-
-	passwordLine, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read password: %w", err)
-	}
-
-	password := strings.TrimRight(passwordLine, "\r\n")
 
 	// 6. Write connection info to config
 	env := config.Environment{
@@ -197,10 +211,12 @@ func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo,funlen //
 		os.Exit(1)
 	}
 
-	// 7. Write password to keyring
-	if err := keyring.Set(envName, password); err != nil {
-		fmt.Fprintf(os.Stderr, "error: failed to save password to keyring: %v\n", err)
-		os.Exit(1)
+	// 7. Write password to keyring (skip for sqlite — no password needed)
+	if driver != "sqlite" {
+		if err := keyring.Set(envName, password); err != nil {
+			fmt.Fprintf(os.Stderr, "error: failed to save password to keyring: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// 8. Print success message

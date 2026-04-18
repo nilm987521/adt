@@ -65,6 +65,7 @@
 | PostgreSQL Driver | pgx/v5 (`github.com/jackc/pgx/v5/stdlib`) | 高效能、原生 `BEGIN READ ONLY` |
 | MySQL Driver | go-sql-driver/mysql (`github.com/go-sql-driver/mysql`) | 業界標準純 Go 實作 |
 | SQL Server Driver | go-mssqldb (`github.com/microsoft/go-mssqldb`) | Microsoft 官方 Go 驅動 |
+| SQLite Driver | modernc.org/sqlite (`modernc.org/sqlite`) | 純 Go 實作（無 CGO）；唯讀保護使用 `PRAGMA query_only = ON` |
 | 憑證儲存 | `github.com/zalando/go-keyring` | 三平台 OS keyring 抽象化 |
 
 ### 2.1 目標 Oracle 版本

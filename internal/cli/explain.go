@@ -90,15 +90,18 @@ func runExplain(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CL
 		handleValidationError(err, originalSQL, envName, "explain", cfg)
 	}
 
-	// 5. Retrieve password from system keyring
-	password, err := keyring.Get(envName)
-	if err != nil {
-		_ = output.PrintJSON(output.ErrorOutput{
-			Error:   "credential_not_found",
-			Message: err.Error(),
-		})
+	// 5. Retrieve password from system keyring (sqlite uses empty password)
+	var password string
+	if env.EffectiveDriver() != "sqlite" {
+		password, err = keyring.Get(envName)
+		if err != nil {
+			_ = output.PrintJSON(output.ErrorOutput{
+				Error:   "credential_not_found",
+				Message: err.Error(),
+			})
 
-		os.Exit(1)
+			os.Exit(1)
+		}
 	}
 
 	// 6. Resolve timeout: --timeout flag → env.Timeout → cfg.Defaults.Timeout → 30s
