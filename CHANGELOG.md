@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — Unreleased
+
+### Added
+- **Multi-database support**: PostgreSQL, MySQL, and SQL Server drivers alongside Oracle
+- `driver` field on each config environment (`oracle|postgres|mysql|mssql`); defaults to `oracle` for backward compatibility
+- `database` field on config environment for PostgreSQL, MySQL, and SQL Server
+- `internal/dbfactory.NewDriver` — constructs the correct driver from `config.Environment`
+- `adt setup` now prompts for driver selection with per-driver default ports and conditional service/database prompt
+
+### Changed
+- CLI commands now use `dbfactory.NewDriver` instead of `oracle.New` directly
+- Security model: Layer 3 row limit uses database-native syntax (`ROWNUM` / `LIMIT` / `TOP`); Layer 4 read-only tx note updated to document SQL Server's `READ COMMITTED` fallback
+- Config schema bumped to v2; automatic v1→v2 migration sets `driver: oracle` on existing environments
+- Keyring account prefix updated to `db-password-<env>` (migrated from `oracle-password-<env>`)
+
+---
+
 ## [Unreleased]
 
 ### Added

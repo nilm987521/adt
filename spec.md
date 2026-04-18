@@ -6,7 +6,7 @@
 
 **adt**（Agentic DB Tool）
 
-一個跨平台（macOS / Windows / Linux）的 Oracle 資料庫查詢 CLI 工具，設計為供本機 AI agent（如 Claude Code）安全使用。
+一個跨平台（macOS / Windows / Linux）的關聯式資料庫查詢 CLI 工具，支援 Oracle、PostgreSQL、MySQL 與 SQL Server，設計為供本機 AI agent（如 Claude Code）安全使用。
 
 ### 1.2 授權
 
@@ -62,6 +62,9 @@
 | CLI 框架 | cobra | 業界標準、生態完整、未來擴充彈性高 |
 | 設定管理 | viper | 與 cobra 整合良好、支援多來源設定 |
 | Oracle Driver | go-ora (`github.com/sijms/go-ora/v2`) | 純 Go 實作、免 Oracle Instant Client、支援 11g |
+| PostgreSQL Driver | pgx/v5 (`github.com/jackc/pgx/v5/stdlib`) | 高效能、原生 `BEGIN READ ONLY` |
+| MySQL Driver | go-sql-driver/mysql (`github.com/go-sql-driver/mysql`) | 業界標準純 Go 實作 |
+| SQL Server Driver | go-mssqldb (`github.com/microsoft/go-mssqldb`) | Microsoft 官方 Go 驅動 |
 | 憑證儲存 | `github.com/zalando/go-keyring` | 三平台 OS keyring 抽象化 |
 
 ### 2.1 目標 Oracle 版本
@@ -163,26 +166,29 @@ adt
 ### 5.2 結構
 
 ```yaml
-config_version: 1               # Schema 版本，未來變更用於 migration
+config_version: 2               # Schema 版本；v2 新增多 DB driver 支援
 
-default_env: fetnet-dev
+default_env: oracle-dev
 
 environments:
-  fetnet-dev:
+  oracle-dev:
+    driver: oracle              # oracle | postgres | mysql | mssql
     user: dev_user
-    host: dev-db.fetnet.net
+    host: dev-db.example.net
     port: 1521
-    service: DEVDB
+    service: DEVDB              # Oracle 使用 service；其他 DB 使用 database
 
-  fetnet-stg:
-    user: stg_user
-    host: stg-db.fetnet.net
-    port: 1521
-    service: STGDB
+  pg-dev:
+    driver: postgres
+    user: dev_user
+    host: pg.example.net
+    port: 5432
+    database: myapp
 
-  fetnet-prod:
+  oracle-prod:
+    driver: oracle
     user: prod_user
-    host: prod-db.fetnet.net
+    host: prod-db.example.net
     port: 1521
     service: PRODDB
     production: true            # 標記為正式環境
@@ -572,7 +578,20 @@ go build -ldflags "
 - [x] 單元測試與整合測試
 - [ ] 公開於 GitHub
 
-### 階段 4：推廣與強化（v1.x 之後）
+### 階段 4：多資料庫支援（v0.4.0）
+
+- [x] `db.Driver` interface + `QueryResult` 型別（`internal/db/driver.go`）
+- [x] Oracle driver 搬移至 `internal/db/oracle/`，實作 `db.Driver`
+- [x] PostgreSQL driver (`internal/db/postgres/`)
+- [x] MySQL driver (`internal/db/mysql/`)
+- [x] SQL Server driver (`internal/db/mssql/`)
+- [x] `dbfactory.NewDriver` factory (`internal/dbfactory/factory.go`)
+- [x] Config v2：`driver` + `database` 欄位、v1→v2 自動 migration
+- [x] CLI commands 改用 `dbfactory.NewDriver`
+- [x] `setup` subcommand 支援 driver 選擇與各 DB 預設 port
+- [x] 各 driver 單元測試（`wrapWithRowLimit`、DSN 格式）
+
+### 階段 5：推廣與強化（v1.x 之後）
 
 - [ ] Homebrew tap
 - [ ] Scoop / WinGet 支援
