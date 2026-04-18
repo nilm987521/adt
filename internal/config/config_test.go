@@ -8,17 +8,21 @@ import (
 	"time"
 )
 
+const driverOracle = "oracle"
+
 const validConfigContent = `
-config_version: 1
+config_version: 2
 default_env: test-env
 environments:
   test-env:
+    driver: oracle
     user: testuser
     host: localhost
     port: 1521
     service: TESTDB
     production: false
   prod-env:
+    driver: oracle
     user: produser
     host: prodhost
     port: 1521
@@ -71,8 +75,8 @@ func TestLoadValidConfig(t *testing.T) {
 		t.Errorf("Audit.LogPath = %q, want /tmp/test-audit.log", cfg.Audit.LogPath)
 	}
 
-	if cfg.ConfigVersion != 1 {
-		t.Errorf("ConfigVersion = %d, want 1", cfg.ConfigVersion)
+	if cfg.ConfigVersion != 2 {
+		t.Errorf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
 	}
 }
 
@@ -122,10 +126,11 @@ func TestLoadAppliesDefaultMaxRows(t *testing.T) {
 
 	// When max_rows not set in defaults, applyDefaults fills in 1000
 	content := `
-config_version: 1
+config_version: 2
 default_env: test-env
 environments:
   test-env:
+    driver: oracle
     user: testuser
     host: localhost
     port: 1521
@@ -220,9 +225,10 @@ func TestGetEnvNoDefaultSet(t *testing.T) {
 	t.Parallel()
 
 	content := `
-config_version: 1
+config_version: 2
 environments:
   test-env:
+    driver: oracle
     user: testuser
     host: localhost
     port: 1521
@@ -324,7 +330,7 @@ func TestSaveAndReload(t *testing.T) {
 	cfgPath := filepath.Join(tmp, "subdir", "config.yaml")
 
 	original := &Config{
-		ConfigVersion: 1,
+		ConfigVersion: 2,
 		DefaultEnv:    "roundtrip-env",
 		Environments: map[string]Environment{
 			"roundtrip-env": {
@@ -394,7 +400,7 @@ func TestSaveCreatesParentDirs(t *testing.T) {
 
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "a", "b", "c", "config.yaml")
-	cfg := &Config{ConfigVersion: 1, DefaultEnv: "x"}
+	cfg := &Config{ConfigVersion: 2, DefaultEnv: "x"}
 	cfg.Defaults.MaxRows = 100
 
 	cfg.Defaults.Timeout = 10 * time.Second
@@ -416,5 +422,138 @@ func TestLoadInvalidYAML(t *testing.T) {
 	_, err := Load(cfgPath)
 	if err == nil {
 		t.Fatal("expected error for invalid YAML, got nil")
+	}
+}
+
+func TestEffectiveDriverEmpty(t *testing.T) {
+	t.Parallel()
+
+	env := Environment{}
+	if got := env.EffectiveDriver(); got != driverOracle {
+		t.Errorf("EffectiveDriver() = %q, want %q", got, driverOracle)
+	}
+}
+
+func TestEffectiveDriverSet(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		driver string
+	}{
+		{"postgres"},
+		{"mysql"},
+		{"mssql"},
+		{driverOracle},
+	}
+	for _, tc := range cases {
+		env := Environment{Driver: tc.driver}
+		if got := env.EffectiveDriver(); got != tc.driver {
+			t.Errorf("EffectiveDriver() = %q, want %q", got, tc.driver)
+		}
+	}
+}
+
+func TestMigrateV1ToV2(t *testing.T) {
+	t.Parallel()
+
+	// A v1 config without driver fields should be migrated:
+	// - Driver set to "oracle" on all environments
+	// - config_version bumped to 2
+	// - file saved
+	v1Content := `
+config_version: 1
+default_env: dev
+environments:
+  dev:
+    user: devuser
+    host: localhost
+    port: 1521
+    service: DEVDB
+  staging:
+    user: staginguser
+    host: staginghost
+    port: 1521
+    service: STAGINGDB
+defaults:
+  max_rows: 500
+  timeout: 20s
+audit:
+  log_path: /tmp/migrate-test-audit.log
+`
+	cfgPath := writeTempConfig(t, v1Content)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// After load, migration should have run: version bumped to 2
+	if cfg.ConfigVersion != 2 {
+		t.Errorf("ConfigVersion = %d, want 2 after migration", cfg.ConfigVersion)
+	}
+
+	// All environments should have Driver set to "oracle"
+	for name, env := range cfg.Environments {
+		if env.Driver != driverOracle {
+			t.Errorf("env %q: Driver = %q, want %q", name, env.Driver, driverOracle)
+		}
+	}
+
+	// The file on disk should also reflect the migration
+	reloaded, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() after migration error = %v", err)
+	}
+
+	if reloaded.ConfigVersion != 2 {
+		t.Errorf("reloaded ConfigVersion = %d, want 2", reloaded.ConfigVersion)
+	}
+}
+
+func TestLoadV2WithPostgresDriver(t *testing.T) {
+	t.Parallel()
+
+	v2Content := `
+config_version: 2
+default_env: pg-env
+environments:
+  pg-env:
+    driver: postgres
+    database: myapp
+    user: pguser
+    host: pghost
+    port: 5432
+defaults:
+  max_rows: 200
+  timeout: 15s
+audit:
+  log_path: /tmp/pg-audit.log
+`
+	cfgPath := writeTempConfig(t, v2Content)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	env, err := cfg.GetEnv("pg-env")
+	if err != nil {
+		t.Fatalf("GetEnv() error = %v", err)
+	}
+
+	if env.Driver != "postgres" {
+		t.Errorf("Driver = %q, want %q", env.Driver, "postgres")
+	}
+
+	if env.Database != "myapp" {
+		t.Errorf("Database = %q, want %q", env.Database, "myapp")
+	}
+
+	if env.EffectiveDriver() != "postgres" {
+		t.Errorf("EffectiveDriver() = %q, want %q", env.EffectiveDriver(), "postgres")
+	}
+
+	if cfg.ConfigVersion != 2 {
+		t.Errorf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
 	}
 }

@@ -10,13 +10,17 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nilm987521/adt/internal/keyring"
 )
 
 // CurrentVersion is the latest config_version this binary understands.
-const CurrentVersion = 1
+const CurrentVersion = 2
 
-// Environment holds connection settings for a single named Oracle environment.
+// Environment holds connection settings for a single named database environment.
 type Environment struct {
+	Driver              string        `yaml:"driver"`   // "oracle"|"postgres"|"mysql"|"mssql"; default "oracle"
+	Database            string        `yaml:"database"` // used by postgres/mysql/mssql; oracle uses Service
 	User                string        `yaml:"user"`
 	Host                string        `yaml:"host"`
 	Port                int           `yaml:"port"`
@@ -25,6 +29,15 @@ type Environment struct {
 	RequireConfirmation bool          `yaml:"require_confirmation"`
 	MaxRows             int           `yaml:"max_rows"`
 	Timeout             time.Duration `yaml:"timeout"`
+}
+
+// EffectiveDriver returns the driver name, defaulting to "oracle" for backwards compatibility.
+func (e *Environment) EffectiveDriver() string {
+	if e.Driver == "" {
+		return "oracle"
+	}
+
+	return e.Driver
 }
 
 // Config is the top-level configuration structure.
@@ -62,6 +75,12 @@ func Load(path string) (*Config, error) {
 	}
 
 	applyDefaults(&cfg)
+
+	if cfg.ConfigVersion == 1 {
+		if err := migrateV1ToV2(&cfg, path); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: config migration failed: %v\n", err)
+		}
+	}
 
 	return &cfg, nil
 }
@@ -105,6 +124,35 @@ func (c *Config) GetEnv(name string) (*Environment, error) {
 	}
 
 	return &env, nil
+}
+
+// migrateV1ToV2 upgrades a v1 config in-place:
+// - sets Driver: "oracle" on every environment that lacks a driver
+// - migrates each environment's keyring entry (oracle-password-* → db-password-*)
+// - bumps config_version to 2 and saves
+// Prints a one-time notice to stderr.
+func migrateV1ToV2(cfg *Config, path string) error {
+	for name, env := range cfg.Environments {
+		if env.Driver == "" {
+			env.Driver = "oracle"
+			cfg.Environments[name] = env
+		}
+		// Migrate keyring entry; ignore errors (key may not exist on this machine)
+		_ = keyring.MigrateOracleKey(name)
+	}
+
+	cfg.ConfigVersion = 2
+
+	if err := cfg.Save(path); err != nil {
+		return fmt.Errorf("save migrated config: %w", err)
+	}
+
+	fmt.Fprintln(os.Stderr,
+		"notice: config migrated from v1 to v2 (multi-DB support). "+
+			"All environments set to driver: oracle. "+
+			"Keyring entries updated to db-password-* format.")
+
+	return nil
 }
 
 // Save serialises the config to YAML and writes it to path.
