@@ -612,6 +612,18 @@ func TestEffectiveMaskColumns(t *testing.T) {
 			envMask:    []string{"ssn"},
 			want:       []string{"SSN"},
 		},
+		{
+			name:       "duplicate between global and env is deduplicated",
+			globalMask: []string{"email"},
+			envMask:    []string{"email", "phone"},
+			want:       []string{"EMAIL", "PHONE"},
+		},
+		{
+			name:       "case-variant duplicate is deduplicated",
+			globalMask: []string{"Email"},
+			envMask:    []string{"EMAIL"},
+			want:       []string{"EMAIL"},
+		},
 	}
 
 	for _, tt := range tests {

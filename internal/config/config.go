@@ -36,15 +36,25 @@ type Environment struct {
 
 // EffectiveMaskColumns returns the union of globalMask and the environment's own MaskColumns,
 // with all values uppercased for case-insensitive comparison.
+// Duplicates (e.g. the same column in both global and env lists) are deduplicated.
 func (e Environment) EffectiveMaskColumns(globalMask []string) []string {
+	seen := make(map[string]bool, len(globalMask)+len(e.MaskColumns))
 	result := make([]string, 0, len(globalMask)+len(e.MaskColumns))
 
 	for _, col := range globalMask {
-		result = append(result, strings.ToUpper(col))
+		upper := strings.ToUpper(col)
+		if !seen[upper] {
+			seen[upper] = true
+			result = append(result, upper)
+		}
 	}
 
 	for _, col := range e.MaskColumns {
-		result = append(result, strings.ToUpper(col))
+		upper := strings.ToUpper(col)
+		if !seen[upper] {
+			seen[upper] = true
+			result = append(result, upper)
+		}
 	}
 
 	return result
