@@ -10,7 +10,7 @@ A cross-platform CLI for safely querying Oracle databases from AI agents (Claude
 
 ## Overview
 
-`adt` is a command-line tool that gives AI agents (such as Claude Code) safe, read-only access to Oracle databases. It is designed for situations where you cannot create a dedicated read-only DB account and must enforce read-only semantics at the application layer.
+`adt` is a command-line tool that gives AI agents (such as Claude Code) safe, read-only access to relational databases (Oracle, PostgreSQL, MySQL, SQL Server). It is designed for situations where you cannot create a dedicated read-only DB account and must enforce read-only semantics at the application layer.
 
 Without a guard like `adt`, an AI agent with DB access could — through hallucination or prompt injection — issue destructive SQL (`DELETE`, `DROP`, `UPDATE`) and cause irreversible damage. `adt` prevents this with four independent defence layers that make writes impossible regardless of what SQL an agent generates.
 
@@ -18,8 +18,9 @@ Without a guard like `adt`, an AI agent with DB access could — through halluci
 
 ## Key Features
 
-- **Pure Go binary, no Oracle Instant Client required** — uses `go-ora` (`github.com/sijms/go-ora/v2`), a pure-Go Oracle driver. A single downloaded binary is all you need.
-- **4-layer read-only protection** — tool design (no write subcommands) → SQL keyword whitelist → automatic ROWNUM row limit → `SET TRANSACTION READ ONLY` enforced at the DB level.
+- **Multi-database support** — Oracle, PostgreSQL, MySQL, and SQL Server. Select the driver per environment with `driver: oracle|postgres|mysql|mssql` in config.
+- **Pure Go binary, no native clients required** — uses pure-Go drivers for all supported databases. A single downloaded binary is all you need.
+- **4-layer read-only protection** — tool design (no write subcommands) → SQL keyword whitelist → automatic row limit → database-level read-only transaction or equivalent.
 - **OS keyring for password storage** — passwords live in macOS Keychain, Windows Credential Manager, or Linux Secret Service. Never in environment variables or config files where an agent could read them.
 - **Structured JSON output** — every command outputs machine-readable JSON by default, making it easy for agents to parse results and errors.
 - **Full audit log** — every execution is appended to a JSON Lines audit log, recording the full SQL text, row count, elapsed time, and outcome.
@@ -109,26 +110,48 @@ Override with `--config <path>`.
 ### Example config.yaml
 
 ```yaml
-config_version: 1               # Schema version — used for future migrations
+config_version: 2               # Schema version — v2 adds multi-DB driver support
 
-default_env: fetnet-dev
+default_env: oracle-dev
 
 environments:
-  fetnet-dev:
+  # Oracle environment
+  oracle-dev:
+    driver: oracle
     user: dev_user
-    host: dev-db.fetnet.net
+    host: dev-db.example.net
     port: 1521
     service: DEVDB
 
-  fetnet-stg:
-    user: stg_user
-    host: stg-db.fetnet.net
-    port: 1521
-    service: STGDB
+  # PostgreSQL environment
+  pg-dev:
+    driver: postgres
+    user: dev_user
+    host: pg.example.net
+    port: 5432
+    database: myapp
 
-  fetnet-prod:
+  # MySQL environment
+  mysql-dev:
+    driver: mysql
+    user: dev_user
+    host: mysql.example.net
+    port: 3306
+    database: myapp
+
+  # SQL Server environment
+  mssql-dev:
+    driver: mssql
+    user: dev_user
+    host: mssql.example.net
+    port: 1433
+    database: myapp
+
+  # Production example
+  oracle-prod:
+    driver: oracle
     user: prod_user
-    host: prod-db.fetnet.net
+    host: prod-db.example.net
     port: 1521
     service: PRODDB
     production: true            # Mark as production environment
@@ -182,27 +205,34 @@ Before any SQL reaches the database, `adt` validates it:
 
 Violations exit with code 2 and a JSON error identifying the exact rule broken.
 
-### Layer 3: Automatic ROWNUM Row Limit
+### Layer 3: Automatic Row Limit
 
-`adt` wraps every query in a subquery to cap results (Oracle 11g-compatible):
+`adt` wraps every query in a driver-specific subquery to cap results:
 
-```sql
-SELECT * FROM (
-    <your original SQL>
-) WHERE ROWNUM <= <max_rows>
-```
+| Driver | Wrapping syntax |
+|--------|----------------|
+| Oracle | `SELECT * FROM (<sql>) WHERE ROWNUM <= n` |
+| PostgreSQL / MySQL | `SELECT * FROM (<sql>) AS _adt_sub LIMIT n` |
+| SQL Server | `SELECT TOP n * FROM (<sql>) AS _adt_sub` |
 
 This prevents runaway queries from returning millions of rows. It also works correctly with `ORDER BY` (sort happens before truncation).
 
-### Layer 4: SET TRANSACTION READ ONLY
+### Layer 4: Read-Only Transaction
 
-Every query executes inside a `SET TRANSACTION READ ONLY` transaction. Even if SQL somehow passed Layer 2 validation, Oracle itself rejects any DML or DDL with `ORA-01456`, providing a hard guarantee at the database level.
+Every query executes inside a read-only transaction where supported:
+
+| Driver | Mechanism |
+|--------|-----------|
+| Oracle | `SET TRANSACTION READ ONLY` (ORA-01456 on any DML/DDL) |
+| PostgreSQL | `BEGIN READ ONLY` (native) |
+| MySQL | `SET TRANSACTION READ ONLY` fallback |
+| SQL Server | `READ COMMITTED` isolation (no native read-only tx); write protection relies on Layers 1–2 + DB-level permissions |
 
 ### Password Storage
 
 Passwords are stored exclusively in the OS keyring:
 
-- **macOS**: Keychain (service: `adt`, account: `oracle-password-<env>`)
+- **macOS**: Keychain (service: `adt`, account: `db-password-<env>`)
 - **Windows**: Credential Manager
 - **Linux**: Secret Service (requires GNOME Keyring, KWallet, or libsecret)
 
@@ -327,12 +357,16 @@ Error codes are treated as a public API. Breaking changes require a major versio
 
 ---
 
-## Oracle Version Support
+## Database Support
 
-- **Primary target**: Oracle 11g (11.2.0.4.0 — 64-bit)
-- **Compatible with**: Oracle 12c through 23c
-- Uses `ROWNUM`-based pagination instead of `FETCH FIRST N ROWS ONLY` for Oracle 11g compatibility
-- Driver: `go-ora` (`github.com/sijms/go-ora/v2`) — pure Go, no Oracle Instant Client required
+| Database | Driver library | Notes |
+|----------|---------------|-------|
+| Oracle 11g+ | `github.com/sijms/go-ora/v2` | Pure Go; no Instant Client required. Uses `ROWNUM` for Oracle 11g compatibility. |
+| PostgreSQL 12+ | `github.com/jackc/pgx/v5` | Native `BEGIN READ ONLY` support. |
+| MySQL 5.7+ / 8.x | `github.com/go-sql-driver/mysql` | `SET TRANSACTION READ ONLY` fallback. |
+| SQL Server 2017+ | `github.com/microsoft/go-mssqldb` | No native read-only tx; relies on Layers 1–2 and DB permissions. |
+
+Configure the driver per environment with `driver: oracle|postgres|mysql|mssql`.
 
 ---
 
