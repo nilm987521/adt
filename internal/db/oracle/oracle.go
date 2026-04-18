@@ -17,6 +17,9 @@ type DB struct {
 	conn *sql.DB
 }
 
+// Compile-time check: *DB must satisfy db.Driver.
+var _ db.Driver = (*DB)(nil)
+
 // New opens a new Oracle DB connection.
 // DSN format: oracle://<user>:<password>@<host>:<port>/<service>
 func New(user, password, host string, port int, service string) (*DB, error) {
@@ -171,13 +174,13 @@ func (d *DB) RawQuery(ctx context.Context, rawSQL string) ([]map[string]any, []s
 			return nil, nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
 
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("query execution failed: %w", err)
 	}
 	defer sqlRows.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
 	cols, err := sqlRows.Columns()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to get columns: %w", err)
 	}
 
 	var results []map[string]any
@@ -191,7 +194,7 @@ func (d *DB) RawQuery(ctx context.Context, rawSQL string) ([]map[string]any, []s
 		}
 
 		if err := sqlRows.Scan(ptrs...); err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
 		row := make(map[string]any, len(cols))
@@ -207,7 +210,7 @@ func (d *DB) RawQuery(ctx context.Context, rawSQL string) ([]map[string]any, []s
 			return nil, nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
 
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("row iteration error: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -228,7 +231,10 @@ func (d *DB) ExplainPlan(ctx context.Context, userSQL string) ([]string, error) 
 	}
 	defer conn.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
-	// EXPLAIN PLAN writes to PLAN_TABLE — use a regular transaction
+	// EXPLAIN PLAN writes to PLAN_TABLE — use a regular transaction.
+	// Oracle does not support a bind parameter for the target SQL of EXPLAIN PLAN,
+	// so userSQL must be concatenated. The SQL has already been validated by the
+	// security layer (SELECT-only) before reaching this point.
 	explainSQL := fmt.Sprintf("EXPLAIN PLAN SET STATEMENT_ID = '%s' FOR %s", stmtID, userSQL)
 	if _, err := conn.ExecContext(ctx, explainSQL); err != nil {
 		if ctx.Err() != nil {
@@ -281,32 +287,32 @@ func (d *DB) ListTables(ctx context.Context, schema string) ([]map[string]any, [
 }
 
 // DescribeTable returns column metadata rows and ordered column names for the named table.
-// table may be "SCHEMA.TABLE" or "TABLE" (uses current user as schema when no dot is present).
+// table may be "SCHEMA.TABLE" or "TABLE" (uses USER_TAB_COLUMNS for the current user when no dot).
 func (d *DB) DescribeTable(ctx context.Context, table string) ([]map[string]any, []string, error) {
 	parts := strings.SplitN(strings.ToUpper(table), ".", 2)
 
-	var schemaName, tableName string
 	if len(parts) == 2 {
-		schemaName = parts[0]
-		tableName = parts[1]
-	} else {
-		// schema will be resolved at query time via UPPER(:1) against the current user.
-		// We pass an empty string; the caller is responsible for providing a fully-qualified
-		// name when cross-schema access is needed.
-		schemaName = ""
-		tableName = parts[0]
+		// Fully-qualified: query ALL_TAB_COLUMNS with explicit owner.
+		rawSQL := "SELECT COLUMN_ID, COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, DATA_DEFAULT " +
+			"FROM ALL_TAB_COLUMNS " +
+			"WHERE OWNER = UPPER(:1) AND TABLE_NAME = UPPER(:2) " +
+			"ORDER BY COLUMN_ID"
+
+		return d.rawQueryWithArgs(ctx, rawSQL, parts[0], parts[1])
 	}
 
+	// Unqualified: query USER_TAB_COLUMNS (current user only), mirrors ListTables pattern.
 	rawSQL := "SELECT COLUMN_ID, COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, DATA_DEFAULT " +
-		"FROM ALL_TAB_COLUMNS " +
-		"WHERE OWNER = UPPER(:1) AND TABLE_NAME = UPPER(:2) " +
+		"FROM USER_TAB_COLUMNS " +
+		"WHERE TABLE_NAME = UPPER(:1) " +
 		"ORDER BY COLUMN_ID"
 
-	return d.rawQueryWithArgs(ctx, rawSQL, schemaName, tableName)
+	return d.rawQueryWithArgs(ctx, rawSQL, parts[0])
 }
 
 // Sample returns a random sample of n rows from schema.table.
 // Both schema and table are expected to be upper-cased by the caller.
+// Table identifiers cannot be parameterized in Oracle SQL, so they are interpolated directly.
 func (d *DB) Sample(ctx context.Context, schema, table string, n int) (*db.QueryResult, error) {
 	qualifiedTable := schema + "." + table
 	sampleSQL := fmt.Sprintf(
@@ -356,13 +362,13 @@ func (d *DB) rawQueryWithArgs(ctx context.Context, rawSQL string, args ...any) (
 			return nil, nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
 
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("query execution failed: %w", err)
 	}
 	defer sqlRows.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
 	cols, err := sqlRows.Columns()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to get columns: %w", err)
 	}
 
 	var results []map[string]any
@@ -376,7 +382,7 @@ func (d *DB) rawQueryWithArgs(ctx context.Context, rawSQL string, args ...any) (
 		}
 
 		if err := sqlRows.Scan(ptrs...); err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
 		row := make(map[string]any, len(cols))
@@ -392,7 +398,7 @@ func (d *DB) rawQueryWithArgs(ctx context.Context, rawSQL string, args ...any) (
 			return nil, nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
 
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("row iteration error: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
