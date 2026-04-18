@@ -18,13 +18,13 @@ It enforces SELECT-only queries, row limits, and audit logging.`,
 
 // Global flags accessed by subcommands via viper bindings.
 var (
-	cfgFile  string
-	envName  string
-	format   string
-	limit    int
-	timeout  string
-	dryRun   bool
-	confirm  bool
+	cfgFile string
+	envName string
+	format  string
+	limit   int
+	timeout string
+	dryRun  bool
+	confirm bool
 )
 
 // Execute runs the root command and exits on error.
@@ -59,8 +59,9 @@ func initConfig() {
 	} else {
 		home, err := os.UserHomeDir()
 		if err == nil {
-			viper.AddConfigPath(fmt.Sprintf("%s/.config/adt", home))
+			viper.AddConfigPath(home + "/.config/adt")
 		}
+
 		viper.AddConfigPath("$HOME/.config/adt")
 		viper.SetConfigName("config")
 		viper.SetConfigType("yaml")

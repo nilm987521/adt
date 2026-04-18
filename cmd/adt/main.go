@@ -1,3 +1,4 @@
+// Package main is the entry point for the adt CLI binary.
 package main
 
 import "github.com/nilm987521/adt/internal/cli"
@@ -14,5 +15,6 @@ var (
 func main() {
 	cli.Version = version
 	cli.BuildTime = buildTime
+
 	cli.Execute()
 }

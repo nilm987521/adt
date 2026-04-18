@@ -27,7 +27,7 @@ func init() {
 	RootCmd.AddCommand(explainCmd)
 }
 
-func runExplain(cmd *cobra.Command, args []string) {
+func runExplain(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI command; complexity is inherent in sequential validation steps
 	originalSQL := args[0]
 
 	// 1. Load config
@@ -35,12 +35,14 @@ func runExplain(cmd *cobra.Command, args []string) {
 	if cfgPath == "" {
 		cfgPath = config.DefaultConfigPath()
 	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "config_error",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -49,12 +51,14 @@ func runExplain(cmd *cobra.Command, args []string) {
 	if envName == "" {
 		envName = cfg.DefaultEnv
 	}
+
 	env, err := cfg.GetEnv(envName)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "env_not_found",
 			Message: fmt.Sprintf("environment %q not found", envName),
 		})
+
 		os.Exit(1)
 	}
 
@@ -64,10 +68,12 @@ func runExplain(cmd *cobra.Command, args []string) {
 			Error:   "production_not_confirmed",
 			Message: fmt.Sprintf("environment %q requires --confirm flag (production environment)", envName),
 		})
+
 		auditPath := cfg.Audit.LogPath
 		if auditPath == "" {
 			auditPath = config.DefaultAuditLogPath()
 		}
+
 		_ = audit.Write(auditPath, audit.Entry{
 			Env:    envName,
 			Cmd:    "explain",
@@ -75,36 +81,13 @@ func runExplain(cmd *cobra.Command, args []string) {
 			Status: "rejected",
 			Error:  "production_not_confirmed",
 		})
+
 		os.Exit(2)
 	}
 
 	// 4. Validate SQL (SELECT-only enforcement)
 	if err := security.Validate(originalSQL); err != nil {
-		var code, message string
-		if ve, ok := err.(*security.ValidationError); ok {
-			code = ve.Code
-			message = ve.Message
-		} else {
-			code = "validation_error"
-			message = err.Error()
-		}
-		_ = output.PrintJSON(output.ErrorOutput{
-			Error:       code,
-			Message:     message,
-			OriginalSQL: originalSQL,
-		})
-		auditPath := cfg.Audit.LogPath
-		if auditPath == "" {
-			auditPath = config.DefaultAuditLogPath()
-		}
-		_ = audit.Write(auditPath, audit.Entry{
-			Env:    envName,
-			Cmd:    "explain",
-			SQL:    originalSQL,
-			Status: "rejected",
-			Error:  code,
-		})
-		os.Exit(2)
+		handleValidationError(err, originalSQL, envName, "explain", cfg)
 	}
 
 	// 5. Retrieve password from system keyring
@@ -114,6 +97,7 @@ func runExplain(cmd *cobra.Command, args []string) {
 			Error:   "credential_not_found",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -122,9 +106,11 @@ func runExplain(cmd *cobra.Command, args []string) {
 	if queryTimeout == 0 {
 		queryTimeout = 30 * time.Second
 	}
+
 	if env.Timeout > 0 {
 		queryTimeout = env.Timeout
 	}
+
 	if timeoutFlag := viper.GetString("timeout"); timeoutFlag != "" {
 		if d, parseErr := time.ParseDuration(timeoutFlag); parseErr == nil {
 			queryTimeout = d
@@ -138,9 +124,10 @@ func runExplain(cmd *cobra.Command, args []string) {
 			Error:   "db_connection_failed",
 			Message: err.Error(),
 		})
+
 		os.Exit(3)
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck // cleanup; error not actionable
 
 	// 8. Execute EXPLAIN PLAN with timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
@@ -149,7 +136,8 @@ func runExplain(cmd *cobra.Command, args []string) {
 	planLines, err := db.ExplainPlan(ctx, originalSQL)
 
 	// Audit SQL is the EXPLAIN PLAN form
-	auditSQL := fmt.Sprintf("EXPLAIN PLAN FOR %s", originalSQL)
+	auditSQL := "EXPLAIN PLAN FOR " + originalSQL
+
 	auditPath := cfg.Audit.LogPath
 	if auditPath == "" {
 		auditPath = config.DefaultAuditLogPath()
@@ -157,12 +145,14 @@ func runExplain(cmd *cobra.Command, args []string) {
 
 	if err != nil {
 		errMsg := err.Error()
-		status := "db_error"
-		errCode := "db_error"
+		status := statusDBError
+		errCode := statusDBError
+
 		if ctx.Err() != nil {
-			status = "timeout"
-			errCode = "timeout"
+			status = statusTimeout
+			errCode = statusTimeout
 		}
+
 		oraCode := output.ExtractOracleCode(errMsg)
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:      errCode,
@@ -176,7 +166,8 @@ func runExplain(cmd *cobra.Command, args []string) {
 			Status: status,
 			Error:  errCode,
 		})
-		os.Exit(3)
+
+		os.Exit(3) //nolint:gocritic // exitAfterDefer: intentional; cancel() not needed after fatal DB error
 	}
 
 	// 9. Output result
@@ -186,7 +177,7 @@ func runExplain(cmd *cobra.Command, args []string) {
 			fmt.Println(line)
 		}
 	} else {
-		out := map[string]interface{}{
+		out := map[string]any{
 			"env":          envName,
 			"production":   env.Production,
 			"cmd":          "explain",

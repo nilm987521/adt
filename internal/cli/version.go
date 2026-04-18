@@ -18,7 +18,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Long:  "Print the version and build time for this adt binary.",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		fmt.Printf("adt version %s (built %s)\n", Version, BuildTime)
 	},
 }

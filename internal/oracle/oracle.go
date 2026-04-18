@@ -1,3 +1,4 @@
+// Package oracle provides Oracle database connectivity helpers.
 package oracle
 
 import (
@@ -6,14 +7,14 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/sijms/go-ora/v2"
+	_ "github.com/sijms/go-ora/v2" // register Oracle driver via init()
 )
 
 // QueryResult holds the result of a query execution.
 type QueryResult struct {
-	Rows        []map[string]interface{}
+	Rows        []map[string]any
 	RowCount    int
-	Truncated   bool  // true if result may have been cut off (rowCount == maxRows)
+	Truncated   bool // true if result may have been cut off (rowCount == maxRows)
 	ElapsedMs   int64
 	ExecutedSQL string // the actual SQL sent to Oracle (with ROWNUM wrapper)
 }
@@ -27,13 +28,16 @@ type DB struct {
 // DSN format: oracle://<user>:<password>@<host>:<port>/<service>
 func New(user, password, host string, port int, service string) (*DB, error) {
 	dsn := fmt.Sprintf("oracle://%s:%s@%s:%d/%s", user, password, host, port, service)
+
 	db, err := sql.Open("oracle", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open connection: %w", err)
 	}
+
 	db.SetMaxOpenConns(3)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
+
 	return &DB{db: db}, nil
 }
 
@@ -43,14 +47,14 @@ func (d *DB) Close() error {
 }
 
 // WrapWithRowLimit wraps SQL in a ROWNUM subquery for Oracle 11g compatibility.
-// Example: SELECT * FROM (original_sql) WHERE ROWNUM <= maxRows
+// Example: SELECT * FROM (original_sql) WHERE ROWNUM <= maxRows.
 func WrapWithRowLimit(sql string, maxRows int) string {
 	return fmt.Sprintf("SELECT * FROM (\n    %s\n) WHERE ROWNUM <= %d", sql, maxRows)
 }
 
 // Query executes a read-only SELECT query with row limit and timeout.
 // It wraps the SQL with ROWNUM and runs inside a READ ONLY transaction.
-func (d *DB) Query(ctx context.Context, originalSQL string, maxRows int) (*QueryResult, error) {
+func (d *DB) Query(ctx context.Context, originalSQL string, maxRows int) (*QueryResult, error) { //nolint:gocyclo // sequential DB operation; complexity is inherent
 	start := time.Now()
 	wrappedSQL := WrapWithRowLimit(originalSQL, maxRows)
 
@@ -59,7 +63,7 @@ func (d *DB) Query(ctx context.Context, originalSQL string, maxRows int) (*Query
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire connection: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
 	// Begin READ ONLY transaction
 	tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -70,12 +74,13 @@ func (d *DB) Query(ctx context.Context, originalSQL string, maxRows int) (*Query
 		if err != nil {
 			return nil, fmt.Errorf("failed to begin transaction: %w", err)
 		}
+
 		if _, execErr := tx.ExecContext(ctx, "SET TRANSACTION READ ONLY"); execErr != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return nil, fmt.Errorf("failed to set transaction read only: %w", execErr)
 		}
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck // best-effort rollback
 
 	// Execute query
 	sqlRows, err := tx.QueryContext(ctx, wrappedSQL)
@@ -83,9 +88,10 @@ func (d *DB) Query(ctx context.Context, originalSQL string, maxRows int) (*Query
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
+
 		return nil, err
 	}
-	defer sqlRows.Close()
+	defer sqlRows.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
 	// Get column names
 	cols, err := sqlRows.Columns()
@@ -94,31 +100,40 @@ func (d *DB) Query(ctx context.Context, originalSQL string, maxRows int) (*Query
 	}
 
 	// Scan rows
-	var results []map[string]interface{}
+	var results []map[string]any
+
 	for sqlRows.Next() {
 		// Create scan targets
-		values := make([]interface{}, len(cols))
-		valuePtrs := make([]interface{}, len(cols))
+		values := make([]any, len(cols))
+
+		valuePtrs := make([]any, len(cols))
 		for i := range values {
 			valuePtrs[i] = &values[i]
 		}
+
 		if err := sqlRows.Scan(valuePtrs...); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
-		row := make(map[string]interface{}, len(cols))
+
+		row := make(map[string]any, len(cols))
 		for i, col := range cols {
 			row[col] = values[i]
 		}
+
 		results = append(results, row)
 	}
+
 	if err := sqlRows.Err(); err != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
+
 		return nil, fmt.Errorf("row iteration error: %w", err)
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
 
 	elapsed := time.Since(start).Milliseconds()
 	rowCount := len(results)
@@ -135,12 +150,12 @@ func (d *DB) Query(ctx context.Context, originalSQL string, maxRows int) (*Query
 // RawQuery executes sql in a READ ONLY transaction without ROWNUM wrapping.
 // Returns rows as maps, plus ordered column names.
 // Use for internally generated SQL that already includes its own limits.
-func (d *DB) RawQuery(ctx context.Context, rawSQL string) ([]map[string]interface{}, []string, error) {
+func (d *DB) RawQuery(ctx context.Context, rawSQL string) ([]map[string]any, []string, error) { //nolint:gocyclo // sequential DB operation; complexity is inherent
 	conn, err := d.db.Conn(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to acquire connection: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
 	tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -149,50 +164,63 @@ func (d *DB) RawQuery(ctx context.Context, rawSQL string) ([]map[string]interfac
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to begin transaction: %w", err)
 		}
+
 		if _, execErr := tx.ExecContext(ctx, "SET TRANSACTION READ ONLY"); execErr != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return nil, nil, fmt.Errorf("failed to set read only: %w", execErr)
 		}
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck // best-effort rollback
 
 	sqlRows, err := tx.QueryContext(ctx, rawSQL)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
+
 		return nil, nil, err
 	}
-	defer sqlRows.Close()
+	defer sqlRows.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
 	cols, err := sqlRows.Columns()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	var results []map[string]interface{}
+	var results []map[string]any
+
 	for sqlRows.Next() {
-		vals := make([]interface{}, len(cols))
-		ptrs := make([]interface{}, len(cols))
+		vals := make([]any, len(cols))
+
+		ptrs := make([]any, len(cols))
 		for i := range vals {
 			ptrs[i] = &vals[i]
 		}
+
 		if err := sqlRows.Scan(ptrs...); err != nil {
 			return nil, nil, err
 		}
-		row := make(map[string]interface{}, len(cols))
+
+		row := make(map[string]any, len(cols))
 		for i, col := range cols {
 			row[col] = vals[i]
 		}
+
 		results = append(results, row)
 	}
+
 	if err := sqlRows.Err(); err != nil {
 		if ctx.Err() != nil {
 			return nil, nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
+
 		return nil, nil, err
 	}
-	tx.Commit()
+
+	if err := tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("commit: %w", err)
+	}
+
 	return results, cols, nil
 }
 
@@ -205,7 +233,7 @@ func (d *DB) ExplainPlan(ctx context.Context, userSQL string) ([]string, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire connection: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
 	// EXPLAIN PLAN writes to PLAN_TABLE — use a regular transaction
 	explainSQL := fmt.Sprintf("EXPLAIN PLAN SET STATEMENT_ID = '%s' FOR %s", stmtID, userSQL)
@@ -213,27 +241,32 @@ func (d *DB) ExplainPlan(ctx context.Context, userSQL string) ([]string, error) 
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
+
 		return nil, fmt.Errorf("EXPLAIN PLAN failed: %w", err)
 	}
 
 	// Read the plan using DBMS_XPLAN.DISPLAY
-	planSQL := fmt.Sprintf(
+	planSQL := fmt.Sprintf( //nolint:gosec // stmtID is a UUID generated internally, not user input
 		"SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY('PLAN_TABLE','%s','ALL'))",
 		stmtID,
 	)
+
 	rows, err := conn.QueryContext(ctx, planSQL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read plan output: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
 	var lines []string
+
 	for rows.Next() {
 		var line string
 		if err := rows.Scan(&line); err != nil {
 			return nil, err
 		}
+
 		lines = append(lines, line)
 	}
+
 	return lines, rows.Err()
 }

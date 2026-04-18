@@ -1,9 +1,11 @@
+// Package cli provides CLI commands for adt.
 package cli
 
 import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,14 +31,14 @@ func init() {
 
 // columnRow is the JSON representation of a single column entry.
 type columnRow struct {
-	ID        int         `json:"id"`
-	Name      string      `json:"name"`
-	Type      string      `json:"type"`
-	Length    int64       `json:"length"`
-	Precision interface{} `json:"precision"`
-	Scale     interface{} `json:"scale"`
-	Nullable  bool        `json:"nullable"`
-	Default   interface{} `json:"default"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Length    int64  `json:"length"`
+	Precision any    `json:"precision"`
+	Scale     any    `json:"scale"`
+	Nullable  bool   `json:"nullable"`
+	Default   any    `json:"default"`
 }
 
 // describeOutput is the JSON output structure for describe.
@@ -56,21 +58,31 @@ func parseTableArg(arg, defaultSchema string) (schema, table string) {
 	if len(parts) == 2 {
 		return parts[0], parts[1]
 	}
+
 	return strings.ToUpper(defaultSchema), strings.ToUpper(arg)
 }
 
-func runDescribe(cmd *cobra.Command, args []string) {
+const (
+	statusDBError = "db_error"
+	statusTimeout = "timeout"
+	formatTable   = "table"
+	nullStr       = "NULL"
+)
+
+func runDescribe(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI command; complexity is inherent in sequential validation steps
 	// 1. Load config
 	cfgPath := viper.GetString("config")
 	if cfgPath == "" {
 		cfgPath = config.DefaultConfigPath()
 	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "config_error",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -79,12 +91,14 @@ func runDescribe(cmd *cobra.Command, args []string) {
 	if envName == "" {
 		envName = cfg.DefaultEnv
 	}
+
 	env, err := cfg.GetEnv(envName)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "env_not_found",
 			Message: fmt.Sprintf("environment %q not found", envName),
 		})
+
 		os.Exit(1)
 	}
 
@@ -94,6 +108,7 @@ func runDescribe(cmd *cobra.Command, args []string) {
 			Error:   "production_not_confirmed",
 			Message: fmt.Sprintf("environment %q requires --confirm flag (production environment)", envName),
 		})
+
 		os.Exit(2)
 	}
 
@@ -104,6 +119,7 @@ func runDescribe(cmd *cobra.Command, args []string) {
 			Error:   "credential_not_found",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -112,9 +128,11 @@ func runDescribe(cmd *cobra.Command, args []string) {
 	if queryTimeout == 0 {
 		queryTimeout = 30 * time.Second
 	}
+
 	if env.Timeout > 0 {
 		queryTimeout = env.Timeout
 	}
+
 	if timeoutFlag := viper.GetString("timeout"); timeoutFlag != "" {
 		if d, parseErr := time.ParseDuration(timeoutFlag); parseErr == nil {
 			queryTimeout = d
@@ -138,9 +156,10 @@ func runDescribe(cmd *cobra.Command, args []string) {
 			Error:   "db_connection_failed",
 			Message: err.Error(),
 		})
+
 		os.Exit(3)
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck // cleanup; error not actionable
 
 	// 8. Execute query with timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
@@ -155,12 +174,14 @@ func runDescribe(cmd *cobra.Command, args []string) {
 
 	if err != nil {
 		errMsg := err.Error()
-		status := "db_error"
-		errCode := "db_error"
+		status := statusDBError
+		errCode := statusDBError
+
 		if ctx.Err() != nil {
-			status = "timeout"
-			errCode = "timeout"
+			status = statusTimeout
+			errCode = statusTimeout
 		}
+
 		oraCode := output.ExtractOracleCode(errMsg)
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:      errCode,
@@ -174,7 +195,8 @@ func runDescribe(cmd *cobra.Command, args []string) {
 			Status: status,
 			Error:  errCode,
 		})
-		os.Exit(3)
+
+		os.Exit(3) //nolint:gocritic // exitAfterDefer: intentional; cancel() not needed after fatal DB error
 	}
 
 	// 9. Map result rows to typed structs
@@ -266,37 +288,43 @@ func runDescribe(cmd *cobra.Command, args []string) {
 
 	// 10. Output result
 	format := viper.GetString("format")
-	if format == "table" {
+	if format == formatTable { //nolint:nestif // output formatting block; nesting is intentional
 		headers := []string{"ID", "NAME", "TYPE", "LENGTH", "PREC", "SCALE", "NULLABLE", "DEFAULT"}
+
 		rows := make([][]string, len(columns))
 		for i, c := range columns {
-			precStr := "NULL"
+			precStr := nullStr
 			if c.Precision != nil {
 				precStr = fmt.Sprintf("%v", c.Precision)
 			}
-			scaleStr := "NULL"
+
+			scaleStr := nullStr
 			if c.Scale != nil {
 				scaleStr = fmt.Sprintf("%v", c.Scale)
 			}
-			defaultStr := "NULL"
+
+			defaultStr := nullStr
 			if c.Default != nil {
 				defaultStr = fmt.Sprintf("%v", c.Default)
 			}
+
 			nullableStr := "Y"
 			if !c.Nullable {
 				nullableStr = "N"
 			}
+
 			rows[i] = []string{
-				fmt.Sprintf("%d", c.ID),
+				strconv.Itoa(c.ID),
 				c.Name,
 				c.Type,
-				fmt.Sprintf("%d", c.Length),
+				strconv.FormatInt(c.Length, 10),
 				precStr,
 				scaleStr,
 				nullableStr,
 				defaultStr,
 			}
 		}
+
 		_ = output.PrintTable(headers, rows)
 	} else {
 		out := describeOutput{

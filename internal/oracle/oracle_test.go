@@ -3,6 +3,8 @@ package oracle
 import "testing"
 
 func TestWrapWithRowLimit(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		sql     string
@@ -30,6 +32,8 @@ func TestWrapWithRowLimit(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := WrapWithRowLimit(tc.sql, tc.maxRows)
 			if got != tc.want {
 				t.Errorf("WrapWithRowLimit() = %q, want %q", got, tc.want)

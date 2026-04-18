@@ -1,6 +1,8 @@
+// Package config provides configuration loading and management for adt.
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +44,7 @@ type Config struct {
 // Load reads a YAML config file from path.
 // It warns when config_version is missing (0) and applies sensible defaults.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path from internal config resolution, not user input
 	if err != nil {
 		return nil, fmt.Errorf("reading config file %q: %w", path, err)
 	}
@@ -69,9 +71,11 @@ func applyDefaults(cfg *Config) {
 	if cfg.Defaults.MaxRows == 0 {
 		cfg.Defaults.MaxRows = 1000
 	}
+
 	if cfg.Defaults.Timeout == 0 {
 		cfg.Defaults.Timeout = 30 * time.Second
 	}
+
 	if cfg.Audit.LogPath == "" {
 		cfg.Audit.LogPath = DefaultAuditLogPath()
 	}
@@ -82,9 +86,11 @@ func (c *Config) GetEnv(name string) (*Environment, error) {
 	if name == "" {
 		name = c.DefaultEnv
 	}
+
 	if name == "" {
-		return nil, fmt.Errorf("no environment specified and no default_env set in config")
+		return nil, errors.New("no environment specified and no default_env set in config")
 	}
+
 	env, ok := c.Environments[name]
 	if !ok {
 		return nil, fmt.Errorf("environment %q not found in config (available: %v)", name, envNames(c))
@@ -93,9 +99,11 @@ func (c *Config) GetEnv(name string) (*Environment, error) {
 	if env.MaxRows == 0 {
 		env.MaxRows = c.Defaults.MaxRows
 	}
+
 	if env.Timeout == 0 {
 		env.Timeout = c.Defaults.Timeout
 	}
+
 	return &env, nil
 }
 
@@ -103,7 +111,7 @@ func (c *Config) GetEnv(name string) (*Environment, error) {
 // Parent directories are created as needed. On non-Windows systems the
 // file is created with permission 0600 (owner-readable only).
 func (c *Config) Save(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
@@ -112,9 +120,9 @@ func (c *Config) Save(path string) error {
 		return fmt.Errorf("serialising config: %w", err)
 	}
 
-	perm := os.FileMode(0600)
+	perm := os.FileMode(0o600)
 	if runtime.GOOS == "windows" {
-		perm = 0666 // Windows ACLs handle access control; 0600 is not meaningful.
+		perm = 0o666 // Windows ACLs handle access control; 0600 is not meaningful.
 	}
 
 	if err := os.WriteFile(path, data, perm); err != nil {
@@ -134,12 +142,15 @@ func DefaultConfigPath() string {
 		if appData == "" {
 			appData = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Roaming")
 		}
+
 		return filepath.Join(appData, "adt", "config.yaml")
 	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "~"
 	}
+
 	return filepath.Join(home, ".config", "adt", "config.yaml")
 }
 
@@ -153,12 +164,15 @@ func DefaultAuditLogPath() string {
 		if localAppData == "" {
 			localAppData = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Local")
 		}
+
 		return filepath.Join(localAppData, "adt", "audit.log")
 	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "~"
 	}
+
 	return filepath.Join(home, ".local", "share", "adt", "audit.log")
 }
 
@@ -168,5 +182,6 @@ func envNames(c *Config) []string {
 	for k := range c.Environments {
 		names = append(names, k)
 	}
+
 	return names
 }

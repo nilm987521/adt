@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,18 +47,20 @@ type listTablesOutput struct {
 	TableCount int        `json:"table_count"`
 }
 
-func runListTables(cmd *cobra.Command, args []string) {
+func runListTables(_ *cobra.Command, _ []string) { //nolint:gocyclo,funlen // CLI command; complexity is inherent in sequential validation steps
 	// 1. Load config
 	cfgPath := viper.GetString("config")
 	if cfgPath == "" {
 		cfgPath = config.DefaultConfigPath()
 	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "config_error",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -66,12 +69,14 @@ func runListTables(cmd *cobra.Command, args []string) {
 	if envName == "" {
 		envName = cfg.DefaultEnv
 	}
+
 	env, err := cfg.GetEnv(envName)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "env_not_found",
 			Message: fmt.Sprintf("environment %q not found", envName),
 		})
+
 		os.Exit(1)
 	}
 
@@ -81,6 +86,7 @@ func runListTables(cmd *cobra.Command, args []string) {
 			Error:   "production_not_confirmed",
 			Message: fmt.Sprintf("environment %q requires --confirm flag (production environment)", envName),
 		})
+
 		os.Exit(2)
 	}
 
@@ -91,6 +97,7 @@ func runListTables(cmd *cobra.Command, args []string) {
 			Error:   "credential_not_found",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -99,9 +106,11 @@ func runListTables(cmd *cobra.Command, args []string) {
 	if queryTimeout == 0 {
 		queryTimeout = 30 * time.Second
 	}
+
 	if env.Timeout > 0 {
 		queryTimeout = env.Timeout
 	}
+
 	if timeoutFlag := viper.GetString("timeout"); timeoutFlag != "" {
 		if d, parseErr := time.ParseDuration(timeoutFlag); parseErr == nil {
 			queryTimeout = d
@@ -110,7 +119,9 @@ func runListTables(cmd *cobra.Command, args []string) {
 
 	// 6. Build SQL query
 	schema := schemaFlag
+
 	var sql string
+
 	if schema == "" {
 		schema = env.User
 		sql = "SELECT TABLE_NAME, NUM_ROWS, LAST_ANALYZED FROM USER_TABLES ORDER BY TABLE_NAME"
@@ -120,6 +131,7 @@ func runListTables(cmd *cobra.Command, args []string) {
 			strings.ToUpper(schema),
 		)
 	}
+
 	schemaUpper := strings.ToUpper(schema)
 
 	// 7. Connect to Oracle DB
@@ -129,9 +141,10 @@ func runListTables(cmd *cobra.Command, args []string) {
 			Error:   "db_connection_failed",
 			Message: err.Error(),
 		})
+
 		os.Exit(3)
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck // cleanup; error not actionable
 
 	// 8. Execute query with timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
@@ -146,12 +159,14 @@ func runListTables(cmd *cobra.Command, args []string) {
 
 	if err != nil {
 		errMsg := err.Error()
-		status := "db_error"
-		errCode := "db_error"
+		status := statusDBError
+		errCode := statusDBError
+
 		if ctx.Err() != nil {
-			status = "timeout"
-			errCode = "timeout"
+			status = statusTimeout
+			errCode = statusTimeout
 		}
+
 		oraCode := output.ExtractOracleCode(errMsg)
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:      errCode,
@@ -165,7 +180,8 @@ func runListTables(cmd *cobra.Command, args []string) {
 			Status: status,
 			Error:  errCode,
 		})
-		os.Exit(3)
+
+		os.Exit(3) //nolint:gocritic // exitAfterDefer: intentional; cancel() not needed after fatal DB error
 	}
 
 	// 9. Map result rows to typed structs
@@ -206,18 +222,22 @@ func runListTables(cmd *cobra.Command, args []string) {
 	format := viper.GetString("format")
 	if format == "table" {
 		headers := []string{"TABLE_NAME", "NUM_ROWS", "LAST_ANALYZED"}
+
 		rows := make([][]string, len(tables))
 		for i, t := range tables {
 			numRowsStr := "NULL"
 			if t.NumRows != nil {
-				numRowsStr = fmt.Sprintf("%d", *t.NumRows)
+				numRowsStr = strconv.FormatInt(*t.NumRows, 10)
 			}
+
 			lastAnalyzedStr := "NULL"
 			if t.LastAnalyzed != nil {
 				lastAnalyzedStr = *t.LastAnalyzed
 			}
+
 			rows[i] = []string{t.Name, numRowsStr, lastAnalyzedStr}
 		}
+
 		_ = output.PrintTable(headers, rows)
 	} else {
 		out := listTablesOutput{

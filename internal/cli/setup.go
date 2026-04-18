@@ -24,11 +24,12 @@ func init() {
 	_ = setupCmd.MarkFlagRequired("env")
 }
 
-func runSetup(cmd *cobra.Command, args []string) error {
+func runSetup(cmd *cobra.Command, _ []string) error { //nolint:gocyclo // CLI command; complexity is inherent in sequential validation steps
 	envName, _ := cmd.Flags().GetString("env")
 
 	// 1. Load config (or create empty if not exists)
 	cfgPath := config.DefaultConfigPath()
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		// Create a minimal empty config if loading fails
@@ -37,6 +38,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 			Environments:  make(map[string]config.Environment),
 		}
 	}
+
 	if cfg.Environments == nil {
 		cfg.Environments = make(map[string]config.Environment)
 	}
@@ -52,14 +54,17 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("%s: ", label)
 		}
+
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			return "", fmt.Errorf("failed to read input: %w", err)
 		}
+
 		line = strings.TrimRight(line, "\r\n")
 		if line == "" {
 			return defaultVal, nil
 		}
+
 		return line, nil
 	}
 
@@ -73,10 +78,12 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	if hasExisting {
 		defaultUser = existing.User
+
 		defaultHost = existing.Host
 		if existing.Port != 0 {
 			defaultPort = strconv.Itoa(existing.Port)
 		}
+
 		defaultService = existing.Service
 	}
 
@@ -94,6 +101,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		return fmt.Errorf("invalid port number %q: %w", portStr, err)
@@ -106,10 +114,12 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	// 4. Prompt for password (hidden input via bufio.Scanner — golang.org/x/term not in go.mod)
 	fmt.Print("Password (input will be visible): ")
+
 	passwordLine, err := reader.ReadString('\n')
 	if err != nil {
 		return fmt.Errorf("failed to read password: %w", err)
 	}
+
 	password := strings.TrimRight(passwordLine, "\r\n")
 
 	// 5. Write connection info to config
@@ -126,6 +136,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		env.MaxRows = existing.MaxRows
 		env.Timeout = existing.Timeout
 	}
+
 	cfg.Environments[envName] = env
 
 	if err := cfg.Save(cfgPath); err != nil {
@@ -141,5 +152,6 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	// 7. Print success message
 	fmt.Printf("Environment %q configured successfully.\n", envName)
+
 	return nil
 }

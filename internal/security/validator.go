@@ -1,3 +1,4 @@
+// Package security provides SQL validation for adt to enforce read-only queries.
 package security
 
 import (
@@ -13,17 +14,17 @@ type ValidationError struct {
 
 func (e *ValidationError) Error() string { return e.Message }
 
-// precompiled regexps
+// precompiled regexps.
 var (
 	reLineComment   = regexp.MustCompile(`--[^\n]*`)
 	reBlockComment  = regexp.MustCompile(`(?s)/\*.*?\*/`)
 	reStringLiteral = regexp.MustCompile(`'(?:''|[^'])*'`)
 
-	reWordINTO      = regexp.MustCompile(`(?i)\bINTO\b`)
-	reForUpdate     = regexp.MustCompile(`(?i)\bFOR\s+UPDATE\b`)
-	reWordBEGIN     = regexp.MustCompile(`(?i)\bBEGIN\b`)
-	reDECLARE       = regexp.MustCompile(`(?i)\bDECLARE\b`)
-	reCALL          = regexp.MustCompile(`(?i)\bCALL\b`)
+	reWordINTO  = regexp.MustCompile(`(?i)\bINTO\b`)
+	reForUpdate = regexp.MustCompile(`(?i)\bFOR\s+UPDATE\b`)
+	reWordBEGIN = regexp.MustCompile(`(?i)\bBEGIN\b`)
+	reDECLARE   = regexp.MustCompile(`(?i)\bDECLARE\b`)
+	reCALL      = regexp.MustCompile(`(?i)\bCALL\b`)
 
 	reSemicolon = regexp.MustCompile(`;\s*\S`)
 )
@@ -38,16 +39,19 @@ func preprocess(sql string) string {
 	// 3. Replace string literals with empty placeholder so keywords inside
 	//    strings don't trigger validation rules.
 	sql = reStringLiteral.ReplaceAllString(sql, "''")
+
 	return sql
 }
 
 // firstToken returns the first whitespace-delimited token from s (uppercased).
 func firstToken(s string) string {
 	s = strings.TrimSpace(s)
+
 	idx := strings.IndexAny(s, " \t\r\n")
 	if idx == -1 {
 		return strings.ToUpper(s)
 	}
+
 	return strings.ToUpper(s[:idx])
 }
 
@@ -96,12 +100,14 @@ func Validate(sql string) error {
 			Message: "PL/SQL blocks are not allowed (found: BEGIN)",
 		}
 	}
+
 	if reDECLARE.MatchString(processed) {
 		return &ValidationError{
 			Code:    "forbidden_keyword",
 			Message: "PL/SQL blocks are not allowed (found: DECLARE)",
 		}
 	}
+
 	if reCALL.MatchString(processed) {
 		return &ValidationError{
 			Code:    "forbidden_keyword",

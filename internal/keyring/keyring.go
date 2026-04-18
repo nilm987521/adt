@@ -1,3 +1,4 @@
+// Package keyring provides system keyring integration for storing Oracle credentials.
 package keyring
 
 import (
@@ -24,6 +25,7 @@ func Get(envName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("credential not found for env %q: %w", envName, err)
 	}
+
 	return pw, nil
 }
 

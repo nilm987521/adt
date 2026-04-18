@@ -1,10 +1,13 @@
 package security
 
 import (
+	"errors"
 	"testing"
 )
 
-func TestValidate(t *testing.T) {
+func TestValidate(t *testing.T) { //nolint:funlen // table-driven test; length is expected
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		sql         string
@@ -127,17 +130,17 @@ func TestValidate(t *testing.T) {
 
 		// forbidden_keyword errors
 		{
-			name:     "SELECT INTO forbidden",
-			sql:      "SELECT * INTO #tmp FROM employees",
-			wantErr:  true,
-			wantCode: "forbidden_keyword",
+			name:        "SELECT INTO forbidden",
+			sql:         "SELECT * INTO #tmp FROM employees",
+			wantErr:     true,
+			wantCode:    "forbidden_keyword",
 			wantMsgPart: "SELECT INTO",
 		},
 		{
-			name:     "FOR UPDATE forbidden",
-			sql:      "SELECT * FROM employees FOR UPDATE",
-			wantErr:  true,
-			wantCode: "forbidden_keyword",
+			name:        "FOR UPDATE forbidden",
+			sql:         "SELECT * FROM employees FOR UPDATE",
+			wantErr:     true,
+			wantCode:    "forbidden_keyword",
 			wantMsgPart: "FOR UPDATE",
 		},
 		{
@@ -153,10 +156,10 @@ func TestValidate(t *testing.T) {
 			wantCode: "sql_not_select",
 		},
 		{
-			name:     "standalone DECLARE after SELECT",
-			sql:      "SELECT DECLARE FROM t",
-			wantErr:  true,
-			wantCode: "forbidden_keyword",
+			name:        "standalone DECLARE after SELECT",
+			sql:         "SELECT DECLARE FROM t",
+			wantErr:     true,
+			wantCode:    "forbidden_keyword",
 			wantMsgPart: "DECLARE",
 		},
 		{
@@ -166,10 +169,10 @@ func TestValidate(t *testing.T) {
 			wantCode: "multi_statement",
 		},
 		{
-			name:     "standalone BEGIN after SELECT",
-			sql:      "SELECT BEGIN FROM t",
-			wantErr:  true,
-			wantCode: "forbidden_keyword",
+			name:        "standalone BEGIN after SELECT",
+			sql:         "SELECT BEGIN FROM t",
+			wantErr:     true,
+			wantCode:    "forbidden_keyword",
 			wantMsgPart: "BEGIN",
 		},
 		{
@@ -179,36 +182,41 @@ func TestValidate(t *testing.T) {
 			wantCode: "multi_statement",
 		},
 		{
-			name:     "standalone CALL after SELECT",
-			sql:      "SELECT CALL FROM t",
-			wantErr:  true,
-			wantCode: "forbidden_keyword",
+			name:        "standalone CALL after SELECT",
+			sql:         "SELECT CALL FROM t",
+			wantErr:     true,
+			wantCode:    "forbidden_keyword",
 			wantMsgPart: "CALL",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := Validate(tt.sql)
 
-			if tt.wantErr {
+			if tt.wantErr { //nolint:nestif // test assertion logic; nested ifs are intentional
 				if err == nil {
 					t.Fatalf("expected error but got nil")
 				}
-				ve, ok := err.(*ValidationError)
+
+				ve := &ValidationError{}
+
+				ok := errors.As(err, &ve)
 				if !ok {
 					t.Fatalf("expected *ValidationError, got %T: %v", err, err)
 				}
+
 				if tt.wantCode != "" && ve.Code != tt.wantCode {
 					t.Errorf("code = %q, want %q (msg: %s)", ve.Code, tt.wantCode, ve.Message)
 				}
+
 				if tt.wantMsgPart != "" && !contains(ve.Message, tt.wantMsgPart) {
 					t.Errorf("message %q does not contain %q", ve.Message, tt.wantMsgPart)
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("expected no error but got: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("expected no error but got: %v", err)
 			}
 		})
 	}
@@ -222,6 +230,7 @@ func contains(s, substr string) bool {
 					return true
 				}
 			}
+
 			return false
 		}())
 }

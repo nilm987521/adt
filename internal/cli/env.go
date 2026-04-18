@@ -50,8 +50,9 @@ type envListOutput struct {
 	Environments []envEntry `json:"environments"`
 }
 
-func runEnvList(cmd *cobra.Command, args []string) error {
+func runEnvList(_ *cobra.Command, _ []string) error {
 	cfgPath := config.DefaultConfigPath()
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -84,27 +85,30 @@ func runEnvList(cmd *cobra.Command, args []string) error {
 		out := envListOutput{Environments: entries}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(out)
 	}
 }
 
-func printEnvTable(entries []envEntry, defaultEnv string) error {
+func printEnvTable(entries []envEntry, _ string) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	defer w.Flush()
+	defer w.Flush() //nolint:errcheck // cleanup; error not actionable
 
-	fmt.Fprintln(w, "NAME\tUSER\tHOST\tPORT\tSERVICE\tPROD\tDEFAULT")
-	fmt.Fprintln(w, "----\t----\t----\t----\t-------\t----\t-------")
+	_, _ = fmt.Fprintln(w, "NAME\tUSER\tHOST\tPORT\tSERVICE\tPROD\tDEFAULT")
+	_, _ = fmt.Fprintln(w, "----\t----\t----\t----\t-------\t----\t-------")
 
 	for _, e := range entries {
 		prod := "false"
 		if e.Production {
 			prod = "true"
 		}
+
 		def := "false"
 		if e.Default {
 			def = "true"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
+
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\t%s\n",
 			e.Name, e.User, e.Host, e.Port, e.Service, prod, def)
 	}
 
@@ -116,8 +120,9 @@ type currentEnvOutput struct {
 	CurrentEnv string `json:"current_env"`
 }
 
-func runEnvCurrent(cmd *cobra.Command, args []string) error {
+func runEnvCurrent(_ *cobra.Command, _ []string) error {
 	cfgPath := config.DefaultConfigPath()
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -132,5 +137,6 @@ func runEnvCurrent(cmd *cobra.Command, args []string) error {
 	out := currentEnvOutput{CurrentEnv: current}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
+
 	return enc.Encode(out)
 }

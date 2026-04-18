@@ -1,3 +1,4 @@
+// Package output provides JSON, table, and CSV output formatting for adt.
 package output
 
 import (
@@ -15,14 +16,14 @@ import (
 
 // QueryOutput is the JSON structure for a successful query.
 type QueryOutput struct {
-	Env         string                   `json:"env"`
-	Production  bool                     `json:"production"`
-	Cmd         string                   `json:"cmd"`
-	Rows        []map[string]interface{} `json:"rows"`
-	RowCount    int                      `json:"row_count"`
-	Truncated   bool                     `json:"truncated"`
-	ElapsedMs   int64                    `json:"elapsed_ms"`
-	ExecutedSQL string                   `json:"executed_sql"`
+	Env         string           `json:"env"`
+	Production  bool             `json:"production"`
+	Cmd         string           `json:"cmd"`
+	Rows        []map[string]any `json:"rows"`
+	RowCount    int              `json:"row_count"`
+	Truncated   bool             `json:"truncated"`
+	ElapsedMs   int64            `json:"elapsed_ms"`
+	ExecutedSQL string           `json:"executed_sql"`
 }
 
 // ErrorOutput is the JSON structure for errors.
@@ -34,9 +35,10 @@ type ErrorOutput struct {
 }
 
 // PrintJSON prints v as indented JSON to stdout.
-func PrintJSON(v interface{}) error {
+func PrintJSON(v any) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
+
 	return enc.Encode(v)
 }
 
@@ -48,6 +50,7 @@ func PrintTable(headers []string, rows [][]string) error {
 	for i, h := range headers {
 		widths[i] = len(h)
 	}
+
 	for _, row := range rows {
 		for i, cell := range row {
 			if i < len(widths) && len(cell) > widths[i] {
@@ -59,19 +62,21 @@ func PrintTable(headers []string, rows [][]string) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
 	// Header
-	fmt.Fprintln(w, strings.Join(headers, "\t"))
+	_, _ = fmt.Fprintln(w, strings.Join(headers, "\t"))
 
 	// Separator using actual max widths
 	seps := make([]string, len(headers))
 	for i, width := range widths {
 		seps[i] = strings.Repeat("-", width)
 	}
-	fmt.Fprintln(w, strings.Join(seps, "\t"))
+
+	_, _ = fmt.Fprintln(w, strings.Join(seps, "\t"))
 
 	// Data rows
 	for _, row := range rows {
-		fmt.Fprintln(w, strings.Join(row, "\t"))
+		_, _ = fmt.Fprintln(w, strings.Join(row, "\t"))
 	}
+
 	return w.Flush()
 }
 
@@ -81,19 +86,22 @@ func PrintCSV(headers []string, rows [][]string) error {
 	if err := w.Write(headers); err != nil {
 		return err
 	}
+
 	for _, row := range rows {
 		if err := w.Write(row); err != nil {
 			return err
 		}
 	}
+
 	w.Flush()
+
 	return w.Error()
 }
 
 // QueryResultToTable converts a slice of map-based rows (from oracle.QueryResult.Rows)
 // into ordered headers and string rows suitable for PrintTable/PrintCSV.
 // Column order is sorted alphabetically for determinism.
-func QueryResultToTable(rows []map[string]interface{}) (headers []string, tableRows [][]string) {
+func QueryResultToTable(rows []map[string]any) (headers []string, tableRows [][]string) {
 	if len(rows) == 0 {
 		return nil, nil
 	}
@@ -102,6 +110,7 @@ func QueryResultToTable(rows []map[string]interface{}) (headers []string, tableR
 	for k := range rows[0] {
 		headers = append(headers, k)
 	}
+
 	sort.Strings(headers)
 
 	// Convert each row to a string slice in the same column order
@@ -111,16 +120,19 @@ func QueryResultToTable(rows []map[string]interface{}) (headers []string, tableR
 		for j, h := range headers {
 			cells[j] = valueToString(row[h])
 		}
+
 		tableRows[i] = cells
 	}
+
 	return headers, tableRows
 }
 
 // valueToString converts an interface{} oracle value to a display string.
-func valueToString(v interface{}) string {
+func valueToString(v any) string {
 	if v == nil {
 		return "NULL"
 	}
+
 	switch val := v.(type) {
 	case time.Time:
 		return val.Format(time.RFC3339)
@@ -137,17 +149,19 @@ func valueToString(v interface{}) string {
 // For JSON: data is marshalled directly.
 // For table/csv: headers and rows are used.
 // If headers is nil (e.g., called from JSON-only context), falls back to JSON.
-func Print(format string, jsonData interface{}, headers []string, rows [][]string) error {
+func Print(format string, jsonData any, headers []string, rows [][]string) error {
 	switch format {
 	case "table":
 		if headers == nil {
 			return PrintJSON(jsonData)
 		}
+
 		return PrintTable(headers, rows)
 	case "csv":
 		if headers == nil {
 			return PrintJSON(jsonData)
 		}
+
 		return PrintCSV(headers, rows)
 	default: // "json" or anything else
 		return PrintJSON(jsonData)
@@ -159,13 +173,14 @@ func Print(format string, jsonData interface{}, headers []string, rows [][]strin
 //   - []byte    → base64 string
 //   - nil       → nil (JSON null)
 //   - others    → as-is
-func SerializeRows(rows []map[string]interface{}) []map[string]interface{} {
+func SerializeRows(rows []map[string]any) []map[string]any {
 	if rows == nil {
-		return []map[string]interface{}{}
+		return []map[string]any{}
 	}
-	result := make([]map[string]interface{}, len(rows))
+
+	result := make([]map[string]any, len(rows))
 	for i, row := range rows {
-		newRow := make(map[string]interface{}, len(row))
+		newRow := make(map[string]any, len(row))
 		for k, v := range row {
 			switch val := v.(type) {
 			case time.Time:
@@ -178,8 +193,10 @@ func SerializeRows(rows []map[string]interface{}) []map[string]interface{} {
 				newRow[k] = val
 			}
 		}
+
 		result[i] = newRow
 	}
+
 	return result
 }
 

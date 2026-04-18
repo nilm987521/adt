@@ -27,7 +27,7 @@ func init() {
 	RootCmd.AddCommand(queryCmd)
 }
 
-func runQuery(cmd *cobra.Command, args []string) {
+func runQuery(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI command; complexity is inherent in sequential validation steps
 	originalSQL := args[0]
 
 	// 1. Load config — read flag values via viper (bound in root.go via BindPFlags)
@@ -35,12 +35,14 @@ func runQuery(cmd *cobra.Command, args []string) {
 	if cfgPath == "" {
 		cfgPath = config.DefaultConfigPath()
 	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "config_error",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -49,12 +51,14 @@ func runQuery(cmd *cobra.Command, args []string) {
 	if envName == "" {
 		envName = cfg.DefaultEnv
 	}
+
 	env, err := cfg.GetEnv(envName)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "env_not_found",
 			Message: fmt.Sprintf("environment %q not found", envName),
 		})
+
 		os.Exit(1)
 	}
 
@@ -70,6 +74,7 @@ func runQuery(cmd *cobra.Command, args []string) {
 		if auditPath == "" {
 			auditPath = config.DefaultAuditLogPath()
 		}
+
 		_ = audit.Write(auditPath, audit.Entry{
 			Env:    envName,
 			Cmd:    "query",
@@ -77,41 +82,18 @@ func runQuery(cmd *cobra.Command, args []string) {
 			Status: "rejected",
 			Error:  "production_not_confirmed",
 		})
+
 		os.Exit(2)
 	}
 
 	// 4. Validate SQL (SELECT-only enforcement via security package)
 	if err := security.Validate(originalSQL); err != nil {
-		var code, message string
-		if ve, ok := err.(*security.ValidationError); ok {
-			code = ve.Code
-			message = ve.Message
-		} else {
-			code = "validation_error"
-			message = err.Error()
-		}
-		_ = output.PrintJSON(output.ErrorOutput{
-			Error:       code,
-			Message:     message,
-			OriginalSQL: originalSQL,
-		})
-		auditPath := cfg.Audit.LogPath
-		if auditPath == "" {
-			auditPath = config.DefaultAuditLogPath()
-		}
-		_ = audit.Write(auditPath, audit.Entry{
-			Env:    envName,
-			Cmd:    "query",
-			SQL:    originalSQL,
-			Status: "rejected",
-			Error:  code,
-		})
-		os.Exit(2)
+		handleValidationError(err, originalSQL, envName, "query", cfg)
 	}
 
 	// 5. Dry-run: SQL has been validated — exit before touching credentials or DB
 	if viper.GetBool("dry-run") {
-		_ = output.PrintJSON(map[string]interface{}{
+		_ = output.PrintJSON(map[string]any{
 			"dry_run":    true,
 			"env":        envName,
 			"production": env.Production,
@@ -119,6 +101,7 @@ func runQuery(cmd *cobra.Command, args []string) {
 			"sql":        originalSQL,
 			"message":    "SQL validated successfully, dry-run mode — not executed",
 		})
+
 		os.Exit(0)
 	}
 
@@ -129,6 +112,7 @@ func runQuery(cmd *cobra.Command, args []string) {
 			Error:   "credential_not_found",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -137,9 +121,11 @@ func runQuery(cmd *cobra.Command, args []string) {
 	if maxRows == 0 {
 		maxRows = 1000
 	}
+
 	if env.MaxRows > 0 {
 		maxRows = env.MaxRows
 	}
+
 	if limitFlag := viper.GetInt("limit"); limitFlag > 0 {
 		maxRows = limitFlag
 	}
@@ -149,9 +135,11 @@ func runQuery(cmd *cobra.Command, args []string) {
 	if queryTimeout == 0 {
 		queryTimeout = 30 * time.Second
 	}
+
 	if env.Timeout > 0 {
 		queryTimeout = env.Timeout
 	}
+
 	if timeoutFlag := viper.GetString("timeout"); timeoutFlag != "" {
 		if d, parseErr := time.ParseDuration(timeoutFlag); parseErr == nil {
 			queryTimeout = d
@@ -165,9 +153,10 @@ func runQuery(cmd *cobra.Command, args []string) {
 			Error:   "db_connection_failed",
 			Message: err.Error(),
 		})
+
 		os.Exit(3)
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck // cleanup; error not actionable
 
 	// 10. Execute query with timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
@@ -182,12 +171,14 @@ func runQuery(cmd *cobra.Command, args []string) {
 
 	if err != nil {
 		errMsg := err.Error()
-		status := "db_error"
-		errCode := "db_error"
+		status := statusDBError
+		errCode := statusDBError
+
 		if ctx.Err() != nil {
-			status = "timeout"
-			errCode = "timeout"
+			status = statusTimeout
+			errCode = statusTimeout
 		}
+
 		oraCode := output.ExtractOracleCode(errMsg)
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:      errCode,
@@ -201,7 +192,8 @@ func runQuery(cmd *cobra.Command, args []string) {
 			Status: status,
 			Error:  errCode,
 		})
-		os.Exit(3)
+
+		os.Exit(3) //nolint:gocritic // exitAfterDefer: intentional; cancel() not needed after fatal DB error
 	}
 
 	// 11. Serialize rows to JSON-safe types and output result

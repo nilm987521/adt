@@ -1,3 +1,4 @@
+// Package audit provides structured audit logging for adt operations.
 package audit
 
 import (
@@ -35,16 +36,17 @@ func Write(logPath string, entry Entry) error {
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(logPath), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
 		return err
 	}
 
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // path from config, not user input
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // cleanup; error not actionable
 
 	entry.Ts = time.Now().Format(time.RFC3339)
+
 	return json.NewEncoder(f).Encode(entry)
 }

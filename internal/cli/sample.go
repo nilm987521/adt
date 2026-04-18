@@ -30,7 +30,7 @@ func init() {
 	sampleCmd.Flags().IntVarP(&sampleN, "count", "n", 10, "number of rows to sample")
 }
 
-func runSample(cmd *cobra.Command, args []string) {
+func runSample(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI command; complexity is inherent in sequential validation steps
 	tableArg := args[0]
 
 	// 1. Load config
@@ -38,12 +38,14 @@ func runSample(cmd *cobra.Command, args []string) {
 	if cfgPath == "" {
 		cfgPath = config.DefaultConfigPath()
 	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "config_error",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -52,12 +54,14 @@ func runSample(cmd *cobra.Command, args []string) {
 	if envName == "" {
 		envName = cfg.DefaultEnv
 	}
+
 	env, err := cfg.GetEnv(envName)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "env_not_found",
 			Message: fmt.Sprintf("environment %q not found", envName),
 		})
+
 		os.Exit(1)
 	}
 
@@ -67,17 +71,20 @@ func runSample(cmd *cobra.Command, args []string) {
 			Error:   "production_not_confirmed",
 			Message: fmt.Sprintf("environment %q requires --confirm flag (production environment)", envName),
 		})
+
 		auditPath := cfg.Audit.LogPath
 		if auditPath == "" {
 			auditPath = config.DefaultAuditLogPath()
 		}
+
 		_ = audit.Write(auditPath, audit.Entry{
 			Env:    envName,
 			Cmd:    "sample",
-			SQL:    fmt.Sprintf("SAMPLE %s", tableArg),
+			SQL:    "SAMPLE " + tableArg,
 			Status: "rejected",
 			Error:  "production_not_confirmed",
 		})
+
 		os.Exit(2)
 	}
 
@@ -88,6 +95,7 @@ func runSample(cmd *cobra.Command, args []string) {
 			Error:   "credential_not_found",
 			Message: err.Error(),
 		})
+
 		os.Exit(1)
 	}
 
@@ -96,9 +104,11 @@ func runSample(cmd *cobra.Command, args []string) {
 	if queryTimeout == 0 {
 		queryTimeout = 30 * time.Second
 	}
+
 	if env.Timeout > 0 {
 		queryTimeout = env.Timeout
 	}
+
 	if timeoutFlag := viper.GetString("timeout"); timeoutFlag != "" {
 		if d, parseErr := time.ParseDuration(timeoutFlag); parseErr == nil {
 			queryTimeout = d
@@ -110,20 +120,20 @@ func runSample(cmd *cobra.Command, args []string) {
 	if maxRows == 0 {
 		maxRows = 1000
 	}
+
 	if env.MaxRows > 0 {
 		maxRows = env.MaxRows
 	}
+
 	if limitFlag := viper.GetInt("limit"); limitFlag > 0 {
 		maxRows = limitFlag
 	}
 
-	effectiveN := sampleN
-	if effectiveN > maxRows {
-		effectiveN = maxRows
-	}
+	effectiveN := min(sampleN, maxRows)
 
 	// 7. Parse table argument: SCHEMA.TABLE or TABLE (use env.User as schema)
 	parts := strings.SplitN(strings.ToUpper(tableArg), ".", 2)
+
 	var schema, table string
 	if len(parts) == 2 {
 		schema = parts[0]
@@ -132,6 +142,7 @@ func runSample(cmd *cobra.Command, args []string) {
 		schema = strings.ToUpper(env.User)
 		table = parts[0]
 	}
+
 	qualifiedTable := fmt.Sprintf("%s.%s", schema, table)
 
 	// 8. Build random sample SQL using DBMS_RANDOM.VALUE (Oracle 11g compatible)
@@ -147,12 +158,14 @@ func runSample(cmd *cobra.Command, args []string) {
 			Error:   "db_connection_failed",
 			Message: err.Error(),
 		})
+
 		os.Exit(3)
 	}
-	defer db.Close()
+	defer db.Close() //nolint:errcheck // cleanup; error not actionable
 
 	// 10. Execute query with timeout context using RawQuery (no double ROWNUM wrap)
 	start := time.Now()
+
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
 
@@ -165,12 +178,14 @@ func runSample(cmd *cobra.Command, args []string) {
 
 	if err != nil {
 		errMsg := err.Error()
-		status := "db_error"
-		errCode := "db_error"
+		status := statusDBError
+		errCode := statusDBError
+
 		if ctx.Err() != nil {
-			status = "timeout"
-			errCode = "timeout"
+			status = statusTimeout
+			errCode = statusTimeout
 		}
+
 		oraCode := output.ExtractOracleCode(errMsg)
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:      errCode,
@@ -184,14 +199,15 @@ func runSample(cmd *cobra.Command, args []string) {
 			Status: status,
 			Error:  errCode,
 		})
-		os.Exit(3)
+
+		os.Exit(3) //nolint:gocritic // exitAfterDefer: intentional; cancel() not needed after fatal DB error
 	}
 
 	elapsedMs := time.Since(start).Milliseconds()
 
 	// 11. Output result
 	serializedRows := output.SerializeRows(rows)
-	out := map[string]interface{}{
+	out := map[string]any{
 		"env":        envName,
 		"production": env.Production,
 		"cmd":        "sample",
