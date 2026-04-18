@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -32,7 +33,7 @@ type Environment struct {
 }
 
 // EffectiveDriver returns the driver name, defaulting to "oracle" for backwards compatibility.
-func (e *Environment) EffectiveDriver() string {
+func (e Environment) EffectiveDriver() string {
 	if e.Driver == "" {
 		return "oracle"
 	}
@@ -137,8 +138,10 @@ func migrateV1ToV2(cfg *Config, path string) error {
 			env.Driver = "oracle"
 			cfg.Environments[name] = env
 		}
-		// Migrate keyring entry; ignore errors (key may not exist on this machine)
-		_ = keyring.MigrateOracleKey(name)
+
+		if err := keyring.MigrateOracleKey(name); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: keyring migration for env %q: %v\n", name, err)
+		}
 	}
 
 	cfg.ConfigVersion = 2
@@ -230,6 +233,8 @@ func envNames(c *Config) []string {
 	for k := range c.Environments {
 		names = append(names, k)
 	}
+
+	sort.Strings(names)
 
 	return names
 }
