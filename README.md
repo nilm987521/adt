@@ -75,9 +75,9 @@ adt sample ORDERS -n 10
 | `adt env current` | Show the current default environment |
 | `adt query "<sql>"` | Execute a SELECT query with automatic row limit and READ ONLY transaction |
 | `adt list-tables [--schema <name>]` | List tables, optionally filtered by schema |
-| `adt describe <table>` | Show table column structure from `ALL_TAB_COLUMNS` |
-| `adt explain "<sql>"` | Show query execution plan via `EXPLAIN PLAN` + `DBMS_XPLAN` without executing |
-| `adt sample <table> [-n <count>]` | Randomly sample rows using `DBMS_RANDOM.VALUE` |
+| `adt describe <table>` | Show table column structure (queries `information_schema` or equivalent for the configured driver) |
+| `adt explain "<sql>"` | Show query execution plan without executing |
+| `adt sample <table> [-n <count>]` | Randomly sample rows (uses `DBMS_RANDOM.VALUE`, `RANDOM()`, `RAND()`, or `NEWID()` per driver) |
 | `adt version` | Show version, build time, and Go version |
 
 ---
@@ -302,7 +302,7 @@ Add the following to your project's `CLAUDE.md` or `~/.claude/CLAUDE.md`:
 ```markdown
 ## adt (Agentic DB Tool)
 
-本機有 `adt` 可查詢 Oracle DB，**只能唯讀**。
+本機有 `adt` 可查詢資料庫（Oracle / PostgreSQL / MySQL / SQL Server），**只能唯讀**。
 
 ### 可用指令
 
@@ -348,8 +348,8 @@ The `error` field in JSON output is a stable key suitable for programmatic handl
 | `production_not_confirmed` | Production environment queried without `--confirm` flag |
 | `env_not_found` | The specified environment does not exist in config |
 | `credential_not_found` | No password found in OS keyring for this environment |
-| `db_connection_failed` | Could not establish a connection to the Oracle database |
-| `db_error` | Oracle runtime error (also includes `oracle_code`, e.g. `ORA-00942`) |
+| `db_connection_failed` | Could not establish a connection to the database |
+| `db_error` | Database runtime error (may include `db_code` with the driver-native error code, e.g. `ORA-00942`) |
 | `timeout` | Query exceeded the configured timeout |
 | `row_limit_exceeded` | Result exceeded hard row limit (reserved for future use) |
 

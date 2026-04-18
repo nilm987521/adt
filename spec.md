@@ -6,7 +6,7 @@
 
 **adt**（Agentic DB Tool）
 
-一個跨平台（macOS / Windows / Linux）的 Oracle 資料庫查詢 CLI 工具，設計為供本機 AI agent（如 Claude Code）安全使用。
+一個跨平台（macOS / Windows / Linux）的關聯式資料庫查詢 CLI 工具，支援 Oracle、PostgreSQL、MySQL 與 SQL Server，設計為供本機 AI agent（如 Claude Code）安全使用。
 
 ### 1.2 授權
 
@@ -166,26 +166,29 @@ adt
 ### 5.2 結構
 
 ```yaml
-config_version: 1               # Schema 版本，未來變更用於 migration
+config_version: 2               # Schema 版本；v2 新增多 DB driver 支援
 
-default_env: fetnet-dev
+default_env: oracle-dev
 
 environments:
-  fetnet-dev:
+  oracle-dev:
+    driver: oracle              # oracle | postgres | mysql | mssql
     user: dev_user
-    host: dev-db.fetnet.net
+    host: dev-db.example.net
     port: 1521
-    service: DEVDB
+    service: DEVDB              # Oracle 使用 service；其他 DB 使用 database
 
-  fetnet-stg:
-    user: stg_user
-    host: stg-db.fetnet.net
-    port: 1521
-    service: STGDB
+  pg-dev:
+    driver: postgres
+    user: dev_user
+    host: pg.example.net
+    port: 5432
+    database: myapp
 
-  fetnet-prod:
+  oracle-prod:
+    driver: oracle
     user: prod_user
-    host: prod-db.fetnet.net
+    host: prod-db.example.net
     port: 1521
     service: PRODDB
     production: true            # 標記為正式環境
