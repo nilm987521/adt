@@ -2,6 +2,7 @@
 package keyring
 
 import (
+	"errors"
 	"fmt"
 
 	gokeyring "github.com/zalando/go-keyring"
@@ -42,10 +43,13 @@ func MigrateOracleKey(envName string) error {
 	oldKey := "oracle-password-" + envName
 
 	pw, err := gokeyring.Get(service, oldKey)
+	if errors.Is(err, gokeyring.ErrNotFound) {
+		// Old entry does not exist — nothing to migrate.
+		return nil
+	}
+
 	if err != nil {
-		// Old entry doesn't exist — nothing to migrate. Any error here means
-		// the key is absent, so treat as a no-op.
-		return nil //nolint:nilerr // absence of old key is not an error condition
+		return fmt.Errorf("migrate keyring entry for %q: read old key: %w", envName, err)
 	}
 
 	if err := gokeyring.Set(service, accountKey(envName), pw); err != nil {
