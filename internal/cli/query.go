@@ -8,8 +8,8 @@ import (
 
 	"github.com/nilm987521/adt/internal/audit"
 	"github.com/nilm987521/adt/internal/config"
+	"github.com/nilm987521/adt/internal/dbfactory"
 	"github.com/nilm987521/adt/internal/keyring"
-	"github.com/nilm987521/adt/internal/oracle"
 	"github.com/nilm987521/adt/internal/output"
 	"github.com/nilm987521/adt/internal/security"
 	"github.com/spf13/cobra"
@@ -147,7 +147,7 @@ func runQuery(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI 
 	}
 
 	// 9. Connect to Oracle DB
-	db, err := oracle.New(env.User, password, env.Host, env.Port, env.Service)
+	db, err := dbfactory.NewDriver(env, password)
 	if err != nil {
 		_ = output.PrintJSON(output.ErrorOutput{
 			Error:   "db_connection_failed",
