@@ -1,4 +1,5 @@
 .todos/
+.worktrees/
 dist/
 *.exe
 coverage.out
