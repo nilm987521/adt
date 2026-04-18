@@ -85,7 +85,7 @@ func (d *DB) Query(ctx context.Context, originalSQL string, maxRows int) (*db.Qu
 			return nil, fmt.Errorf("query timeout: %w", ctx.Err())
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("query execution failed: %w", err)
 	}
 	defer sqlRows.Close() //nolint:errcheck // cleanup; error not actionable in defer
 
@@ -223,7 +223,7 @@ func (d *DB) RawQuery(ctx context.Context, rawSQL string) ([]map[string]any, []s
 // ExplainPlan executes EXPLAIN PLAN FOR <sql> and returns plan output lines.
 // EXPLAIN PLAN writes to PLAN_TABLE so it cannot run in a READ ONLY transaction.
 func (d *DB) ExplainPlan(ctx context.Context, userSQL string) ([]string, error) {
-	stmtID := fmt.Sprintf("adt_%d", time.Now().UnixNano()%10000000)
+	stmtID := fmt.Sprintf("adt_%d", time.Now().UnixNano())
 
 	conn, err := d.conn.Conn(ctx)
 	if err != nil {
@@ -311,8 +311,9 @@ func (d *DB) DescribeTable(ctx context.Context, table string) ([]map[string]any,
 }
 
 // Sample returns a random sample of n rows from schema.table.
-// Both schema and table are expected to be upper-cased by the caller.
+// Both schema and table must be upper-cased, alphanumeric Oracle identifiers (A-Z, 0-9, _, $, #).
 // Table identifiers cannot be parameterized in Oracle SQL, so they are interpolated directly.
+// The caller (internal/cli/sample.go) validates the table argument before this point.
 func (d *DB) Sample(ctx context.Context, schema, table string, n int) (*db.QueryResult, error) {
 	qualifiedTable := schema + "." + table
 	sampleSQL := fmt.Sprintf(
@@ -322,7 +323,7 @@ func (d *DB) Sample(ctx context.Context, schema, table string, n int) (*db.Query
 
 	rows, _, err := d.RawQuery(ctx, sampleSQL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sample query failed: %w", err)
 	}
 
 	return &db.QueryResult{
