@@ -166,7 +166,7 @@ adt
 ### 5.2 結構
 
 ```yaml
-config_version: 2               # Schema 版本；v2 新增多 DB driver 支援
+config_version: 3               # Schema 版本；v3 新增 data masking 支援
 
 default_env: oracle-dev
 
@@ -195,14 +195,21 @@ environments:
     require_confirmation: true  # 執行前需 --confirm flag
     max_rows: 500               # 覆蓋預設 row limit
     timeout: 15s                # 覆蓋預設 timeout
+    mask_columns:               # 選填：此環境額外要遮罩的欄位（疊加至全域設定）
+      - phone
 
 defaults:
   max_rows: 1000
   timeout: 30s
+  mask_columns:                 # 選填：全域遮罩欄位，套用於所有環境
+    - id_number
+    - email
 
 audit:
   log_path: ~/.local/share/adt/audit.log
 ```
+
+`mask_columns` 欄位名稱比對為 **case-insensitive**（不分大小寫）。實際生效的遮罩集合為全域 `defaults.mask_columns` 與各環境 `mask_columns` 的**聯集（union）**。被遮罩的欄位值在所有輸出格式（JSON、table、CSV）中均顯示為 `[REDACTED]`。
 
 ### 5.3 Schema Version 與遷移策略
 
@@ -210,6 +217,8 @@ audit:
 - 未來 schema 有破壞性變更時 bump 版本號
 - 啟動時偵測到舊版本自動提示，或提供 `adt config migrate` 指令
 - 讀取時若缺少 `config_version` 欄位，視為 version 1 並警告
+- v1→v2：自動遷移，新增多 DB driver 支援
+- v2→v3：自動遷移，新增 data masking 支援（`mask_columns` 欄位）
 
 ### 5.4 環境命名規則
 

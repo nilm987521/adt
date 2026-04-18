@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -16,7 +17,7 @@ import (
 )
 
 // CurrentVersion is the latest config_version this binary understands.
-const CurrentVersion = 2
+const CurrentVersion = 3
 
 // Environment holds connection settings for a single named database environment.
 type Environment struct {
@@ -30,6 +31,23 @@ type Environment struct {
 	RequireConfirmation bool          `yaml:"require_confirmation"`
 	MaxRows             int           `yaml:"max_rows"`
 	Timeout             time.Duration `yaml:"timeout"`
+	MaskColumns         []string      `yaml:"mask_columns"` // columns to redact in output; merged with global defaults
+}
+
+// EffectiveMaskColumns returns the union of globalMask and the environment's own MaskColumns,
+// with all values uppercased for case-insensitive comparison.
+func (e Environment) EffectiveMaskColumns(globalMask []string) []string {
+	result := make([]string, 0, len(globalMask)+len(e.MaskColumns))
+
+	for _, col := range globalMask {
+		result = append(result, strings.ToUpper(col))
+	}
+
+	for _, col := range e.MaskColumns {
+		result = append(result, strings.ToUpper(col))
+	}
+
+	return result
 }
 
 // EffectiveDriver returns the driver name, defaulting to "oracle" for backwards compatibility.
@@ -47,8 +65,9 @@ type Config struct {
 	DefaultEnv    string                 `yaml:"default_env"`
 	Environments  map[string]Environment `yaml:"environments"`
 	Defaults      struct {
-		MaxRows int           `yaml:"max_rows"`
-		Timeout time.Duration `yaml:"timeout"`
+		MaxRows     int           `yaml:"max_rows"`
+		Timeout     time.Duration `yaml:"timeout"`
+		MaskColumns []string      `yaml:"mask_columns"`
 	} `yaml:"defaults"`
 	Audit struct {
 		LogPath string `yaml:"log_path"`
@@ -79,6 +98,12 @@ func Load(path string) (*Config, error) {
 
 	if cfg.ConfigVersion == 1 {
 		if err := migrateV1ToV2(&cfg, path); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: config migration failed: %v\n", err)
+		}
+	}
+
+	if cfg.ConfigVersion == 2 {
+		if err := migrateV2ToV3(&cfg, path); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: config migration failed: %v\n", err)
 		}
 	}
@@ -124,6 +149,9 @@ func (c *Config) GetEnv(name string) (*Environment, error) {
 		env.Timeout = c.Defaults.Timeout
 	}
 
+	// Compute effective mask columns: union of global and per-environment lists.
+	env.MaskColumns = env.EffectiveMaskColumns(c.Defaults.MaskColumns)
+
 	return &env, nil
 }
 
@@ -154,6 +182,27 @@ func migrateV1ToV2(cfg *Config, path string) error {
 		"notice: config migrated from v1 to v2 (multi-DB support). "+
 			"All environments set to driver: oracle. "+
 			"Keyring entries updated to db-password-* format.")
+
+	return nil
+}
+
+// migrateV2ToV3 upgrades a v2 config in-place:
+// - ensures Defaults.MaskColumns is initialised to an empty slice if nil
+// - bumps config_version to 3 and saves
+// Prints a one-time notice to stderr.
+func migrateV2ToV3(cfg *Config, path string) error {
+	if cfg.Defaults.MaskColumns == nil {
+		cfg.Defaults.MaskColumns = []string{}
+	}
+
+	cfg.ConfigVersion = 3
+
+	if err := cfg.Save(path); err != nil {
+		return fmt.Errorf("save migrated config: %w", err)
+	}
+
+	fmt.Fprintln(os.Stderr,
+		"notice: config migrated from v2 to v3 (data masking support added).")
 
 	return nil
 }

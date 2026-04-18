@@ -207,6 +207,7 @@ func runSample(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // CLI
 
 	// 11. Output result
 	serializedRows := output.SerializeRows(rows)
+	serializedRows = output.MaskRows(serializedRows, env.MaskColumns)
 	out := map[string]any{
 		"env":        envName,
 		"production": env.Production,

@@ -184,9 +184,11 @@ func runListTables(_ *cobra.Command, _ []string) { //nolint:gocyclo,funlen // CL
 		os.Exit(3) //nolint:gocritic // exitAfterDefer: intentional; cancel() not needed after fatal DB error
 	}
 
-	// 9. Map result rows to typed structs
-	tables := make([]tableRow, 0, len(result.Rows))
-	for _, row := range result.Rows {
+	// 9. Apply masking then map result rows to typed structs
+	maskedRawRows := output.MaskRows(result.Rows, env.MaskColumns)
+
+	tables := make([]tableRow, 0, len(maskedRawRows))
+	for _, row := range maskedRawRows {
 		tr := tableRow{}
 
 		if v, ok := row["TABLE_NAME"]; ok && v != nil {

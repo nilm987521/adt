@@ -11,7 +11,7 @@ import (
 const driverOracle = "oracle"
 
 const validConfigContent = `
-config_version: 2
+config_version: 3
 default_env: test-env
 environments:
   test-env:
@@ -75,8 +75,8 @@ func TestLoadValidConfig(t *testing.T) {
 		t.Errorf("Audit.LogPath = %q, want /tmp/test-audit.log", cfg.Audit.LogPath)
 	}
 
-	if cfg.ConfigVersion != 2 {
-		t.Errorf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
+	if cfg.ConfigVersion != 3 {
+		t.Errorf("ConfigVersion = %d, want 3", cfg.ConfigVersion)
 	}
 }
 
@@ -126,7 +126,7 @@ func TestLoadAppliesDefaultMaxRows(t *testing.T) {
 
 	// When max_rows not set in defaults, applyDefaults fills in 1000
 	content := `
-config_version: 2
+config_version: 3
 default_env: test-env
 environments:
   test-env:
@@ -225,7 +225,7 @@ func TestGetEnvNoDefaultSet(t *testing.T) {
 	t.Parallel()
 
 	content := `
-config_version: 2
+config_version: 3
 environments:
   test-env:
     driver: oracle
@@ -330,7 +330,7 @@ func TestSaveAndReload(t *testing.T) {
 	cfgPath := filepath.Join(tmp, "subdir", "config.yaml")
 
 	original := &Config{
-		ConfigVersion: 2,
+		ConfigVersion: 3,
 		DefaultEnv:    "roundtrip-env",
 		Environments: map[string]Environment{
 			"roundtrip-env": {
@@ -400,7 +400,7 @@ func TestSaveCreatesParentDirs(t *testing.T) {
 
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "a", "b", "c", "config.yaml")
-	cfg := &Config{ConfigVersion: 2, DefaultEnv: "x"}
+	cfg := &Config{ConfigVersion: 3, DefaultEnv: "x"}
 	cfg.Defaults.MaxRows = 100
 
 	cfg.Defaults.Timeout = 10 * time.Second
@@ -487,9 +487,9 @@ audit:
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// After load, migration should have run: version bumped to 2
-	if cfg.ConfigVersion != 2 {
-		t.Errorf("ConfigVersion = %d, want 2 after migration", cfg.ConfigVersion)
+	// After load, both v1→v2 and v2→v3 migrations should have run: version bumped to 3
+	if cfg.ConfigVersion != 3 {
+		t.Errorf("ConfigVersion = %d, want 3 after v1→v2 and v2→v3 migrations", cfg.ConfigVersion)
 	}
 
 	// All environments should have Driver set to "oracle"
@@ -505,8 +505,8 @@ audit:
 		t.Fatalf("Load() after migration error = %v", err)
 	}
 
-	if reloaded.ConfigVersion != 2 {
-		t.Errorf("reloaded ConfigVersion = %d, want 2", reloaded.ConfigVersion)
+	if reloaded.ConfigVersion != 3 {
+		t.Errorf("reloaded ConfigVersion = %d, want 3", reloaded.ConfigVersion)
 	}
 }
 
@@ -553,7 +553,209 @@ audit:
 		t.Errorf("EffectiveDriver() = %q, want %q", env.EffectiveDriver(), "postgres")
 	}
 
-	if cfg.ConfigVersion != 2 {
-		t.Errorf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
+	// v2 config triggers migration to v3 on load
+	if cfg.ConfigVersion != 3 {
+		t.Errorf("ConfigVersion = %d, want 3 (migrated from v2)", cfg.ConfigVersion)
+	}
+}
+
+// --- EffectiveMaskColumns ---
+
+func TestEffectiveMaskColumns(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		globalMask []string
+		envMask    []string
+		want       []string
+	}{
+		{
+			name:       "union of global and env",
+			globalMask: []string{"email"},
+			envMask:    []string{"phone"},
+			want:       []string{"EMAIL", "PHONE"},
+		},
+		{
+			name:       "global only, env empty",
+			globalMask: []string{"email"},
+			envMask:    []string{},
+			want:       []string{"EMAIL"},
+		},
+		{
+			name:       "global empty, env only",
+			globalMask: []string{},
+			envMask:    []string{"id_number"},
+			want:       []string{"ID_NUMBER"},
+		},
+		{
+			name:       "both empty",
+			globalMask: []string{},
+			envMask:    []string{},
+			want:       []string{},
+		},
+		{
+			name:       "case insensitive normalisation",
+			globalMask: []string{"Email"},
+			envMask:    []string{"PHONE"},
+			want:       []string{"EMAIL", "PHONE"},
+		},
+		{
+			name:       "global nil, env nil",
+			globalMask: nil,
+			envMask:    nil,
+			want:       []string{},
+		},
+		{
+			name:       "global nil, env set",
+			globalMask: nil,
+			envMask:    []string{"ssn"},
+			want:       []string{"SSN"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			env := Environment{MaskColumns: tt.envMask}
+			got := env.EffectiveMaskColumns(tt.globalMask)
+
+			if len(got) != len(tt.want) {
+				t.Fatalf("EffectiveMaskColumns() len=%d, want %d; got %v, want %v",
+					len(got), len(tt.want), got, tt.want)
+			}
+
+			// Build sets for comparison (order may vary)
+			gotSet := make(map[string]bool, len(got))
+			for _, v := range got {
+				gotSet[v] = true
+			}
+
+			for _, w := range tt.want {
+				if !gotSet[w] {
+					t.Errorf("EffectiveMaskColumns() missing %q; got %v, want %v", w, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// --- Config v2→v3 migration ---
+
+func TestMigrateV2ToV3(t *testing.T) {
+	t.Parallel()
+
+	v2Content := `
+config_version: 2
+default_env: dev
+environments:
+  dev:
+    driver: oracle
+    user: devuser
+    host: localhost
+    port: 1521
+    service: DEVDB
+defaults:
+  max_rows: 500
+  timeout: 20s
+audit:
+  log_path: /tmp/migrate-v3-test-audit.log
+`
+	cfgPath := writeTempConfig(t, v2Content)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// After load, migration should bump version to 3
+	if cfg.ConfigVersion != 3 {
+		t.Errorf("ConfigVersion = %d, want 3 after v2→v3 migration", cfg.ConfigVersion)
+	}
+
+	// MaskColumns should be empty slice, not nil
+	if cfg.Defaults.MaskColumns == nil {
+		t.Errorf("Defaults.MaskColumns should be empty slice after migration, got nil")
+	}
+
+	if len(cfg.Defaults.MaskColumns) != 0 {
+		t.Errorf("Defaults.MaskColumns = %v, want empty slice", cfg.Defaults.MaskColumns)
+	}
+
+	// The file on disk should also reflect version 3
+	reloaded, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() after v2→v3 migration error = %v", err)
+	}
+
+	if reloaded.ConfigVersion != 3 {
+		t.Errorf("reloaded ConfigVersion = %d, want 3", reloaded.ConfigVersion)
+	}
+}
+
+// TestGetEnvEffectiveMaskColumns verifies that GetEnv populates MaskColumns
+// using the union of global and per-environment mask columns.
+func TestGetEnvEffectiveMaskColumns(t *testing.T) {
+	t.Parallel()
+
+	content := `
+config_version: 3
+default_env: dev
+environments:
+  dev:
+    driver: oracle
+    user: devuser
+    host: localhost
+    port: 1521
+    service: DEVDB
+    mask_columns:
+      - phone
+  prod:
+    driver: oracle
+    user: produser
+    host: prodhost
+    port: 1521
+    service: PRODDB
+defaults:
+  max_rows: 500
+  timeout: 20s
+  mask_columns:
+    - email
+`
+	cfgPath := writeTempConfig(t, content)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// dev env: global["email"] + env["phone"] → ["EMAIL", "PHONE"]
+	devEnv, err := cfg.GetEnv("dev")
+	if err != nil {
+		t.Fatalf("GetEnv(dev) error = %v", err)
+	}
+
+	if len(devEnv.MaskColumns) != 2 {
+		t.Fatalf("dev env MaskColumns len=%d, want 2; got %v", len(devEnv.MaskColumns), devEnv.MaskColumns)
+	}
+
+	devSet := make(map[string]bool)
+	for _, v := range devEnv.MaskColumns {
+		devSet[v] = true
+	}
+
+	if !devSet["EMAIL"] || !devSet["PHONE"] {
+		t.Errorf("dev env MaskColumns = %v, want [EMAIL PHONE]", devEnv.MaskColumns)
+	}
+
+	// prod env: global["email"] + env[] → ["EMAIL"]
+	prodEnv, err := cfg.GetEnv("prod")
+	if err != nil {
+		t.Fatalf("GetEnv(prod) error = %v", err)
+	}
+
+	if len(prodEnv.MaskColumns) != 1 || prodEnv.MaskColumns[0] != "EMAIL" {
+		t.Errorf("prod env MaskColumns = %v, want [EMAIL]", prodEnv.MaskColumns)
 	}
 }

@@ -199,9 +199,11 @@ func runDescribe(_ *cobra.Command, args []string) { //nolint:gocyclo,funlen // C
 		os.Exit(3) //nolint:gocritic // exitAfterDefer: intentional; cancel() not needed after fatal DB error
 	}
 
-	// 9. Map result rows to typed structs
-	columns := make([]columnRow, 0, len(result.Rows))
-	for _, row := range result.Rows {
+	// 9. Apply masking then map result rows to typed structs
+	maskedRawRows := output.MaskRows(result.Rows, env.MaskColumns)
+
+	columns := make([]columnRow, 0, len(maskedRawRows))
+	for _, row := range maskedRawRows {
 		cr := columnRow{}
 
 		if v, ok := row["COLUMN_ID"]; ok && v != nil {
