@@ -261,13 +261,17 @@ func (d *DB) ExplainPlan(ctx context.Context, userSQL string) ([]string, error) 
 	for rows.Next() {
 		var line string
 		if err := rows.Scan(&line); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan plan row: %w", err)
 		}
 
 		lines = append(lines, line)
 	}
 
-	return lines, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("plan row iteration error: %w", err)
+	}
+
+	return lines, nil
 }
 
 // ListTables returns table metadata rows and ordered column names for the given schema.
