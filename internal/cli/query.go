@@ -18,7 +18,7 @@ import (
 
 var queryCmd = &cobra.Command{
 	Use:   "query <sql>",
-	Short: "Execute a SELECT query against Oracle",
+	Short: "Execute a SELECT query against the configured database",
 	Args:  cobra.ExactArgs(1),
 	Run:   runQuery,
 }

@@ -11,8 +11,9 @@ import (
 // RootCmd is the root cobra command for adt.
 var RootCmd = &cobra.Command{
 	Use:   "adt",
-	Short: "Agentic DB Tool — safe Oracle query CLI for AI agents",
-	Long: `adt is a cross-platform Oracle DB query CLI designed for safe use by AI agents.
+	Short: "Agentic DB Tool — safe read-only database CLI for AI agents",
+	Long: `adt is a cross-platform database query CLI designed for safe use by AI agents.
+It supports Oracle, PostgreSQL, MySQL, SQL Server, and SQLite.
 It enforces SELECT-only queries, row limits, and audit logging.`,
 }
 
