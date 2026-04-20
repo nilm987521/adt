@@ -97,14 +97,13 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config file %q: %w", path, err)
 	}
 
-	if cfg.ConfigVersion == 0 {
-		fmt.Fprintf(os.Stderr,
-			"warning: config file %q is missing config_version field (expected %d). "+
-				"Run `adt setup --migrate` to update your config.\n",
-			path, CurrentVersion)
-	}
-
 	applyDefaults(&cfg)
+
+	if cfg.ConfigVersion == 0 {
+		if err := migrateV0ToLatest(&cfg, path); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: config migration failed: %v\n", err)
+		}
+	}
 
 	if cfg.ConfigVersion == 1 {
 		if err := migrateV1ToV2(&cfg, path); err != nil {
@@ -163,6 +162,26 @@ func (c *Config) GetEnv(name string) (*Environment, error) {
 	env.MaskColumns = env.EffectiveMaskColumns(c.Defaults.MaskColumns)
 
 	return &env, nil
+}
+
+// migrateV0ToLatest upgrades a config with no version field to the current version.
+// This handles configs created before config_version was introduced.
+// It bumps config_version to CurrentVersion and saves.
+func migrateV0ToLatest(cfg *Config, path string) error {
+	if cfg.Defaults.MaskColumns == nil {
+		cfg.Defaults.MaskColumns = []string{}
+	}
+
+	cfg.ConfigVersion = CurrentVersion
+
+	if err := cfg.Save(path); err != nil {
+		return fmt.Errorf("save migrated config: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr,
+		"notice: config updated to v%d (added config_version field).\n", CurrentVersion)
+
+	return nil
 }
 
 // migrateV1ToV2 upgrades a v1 config in-place:

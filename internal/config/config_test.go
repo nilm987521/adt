@@ -115,9 +115,9 @@ defaults:
 	if cfg.DefaultEnv != "test-env" {
 		t.Errorf("DefaultEnv = %q, want %q", cfg.DefaultEnv, "test-env")
 	}
-	// ConfigVersion should be 0 when not specified
-	if cfg.ConfigVersion != 0 {
-		t.Errorf("ConfigVersion = %d, want 0", cfg.ConfigVersion)
+	// ConfigVersion should be bumped to CurrentVersion after auto-migration
+	if cfg.ConfigVersion != CurrentVersion {
+		t.Errorf("ConfigVersion = %d, want %d", cfg.ConfigVersion, CurrentVersion)
 	}
 }
 
