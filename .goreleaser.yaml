@@ -39,11 +39,41 @@ archives:
       {{- .Arch }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     files:
       - README.md
       - LICENSE
       - CHANGELOG.md
+
+homebrew_casks:
+  - repository:
+      owner: nilm987521
+      name: homebrew-tools
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    name: adt
+    ids:
+      - adt
+    homepage: https://github.com/nilm987521/adt
+    description: Safe read-only database CLI for AI agents
+    commit_author:
+      name: goreleaser-bot
+      email: goreleaser@nilm987521
+
+scoops:
+  - repository:
+      owner: nilm987521
+      name: scoop-bucket
+      token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
+    directory: bucket
+    ids:
+      - adt
+    homepage: https://github.com/nilm987521/adt
+    description: Safe read-only database CLI for AI agents
+    license: MIT
+    commit_author:
+      name: goreleaser-bot
+      email: goreleaser@nilm987521
 
 checksum:
   name_template: 'checksums.txt'

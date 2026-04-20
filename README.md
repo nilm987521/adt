@@ -29,6 +29,22 @@ Without a guard like `adt`, an AI agent with DB access could — through halluci
 
 ## Installation
 
+### macOS (Homebrew)
+
+```bash
+brew tap nilm987521/tools
+brew install --cask adt
+```
+
+### Windows (Scoop)
+
+```bash
+scoop bucket add nilm987521 https://github.com/nilm987521/scoop-bucket
+scoop install adt
+```
+
+### Manual download (curl)
+
 ```bash
 # macOS (Apple Silicon)
 curl -L https://github.com/nilm987521/adt/releases/latest/download/adt-darwin-arm64 -o /usr/local/bin/adt
@@ -37,8 +53,11 @@ chmod +x /usr/local/bin/adt
 # macOS (Intel)
 curl -L https://github.com/nilm987521/adt/releases/latest/download/adt-darwin-amd64 -o /usr/local/bin/adt
 chmod +x /usr/local/bin/adt
+```
 
-# Build from source
+### Build from source
+
+```bash
 git clone https://github.com/nilm987521/adt
 cd adt && make build
 ```
